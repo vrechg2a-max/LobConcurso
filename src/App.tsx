@@ -806,10 +806,10 @@ export default function App() {
         metrics={metrics}
         user={user}
         levelBadge={{
-          level: gamification.currentLevel.level,
-          title: gamification.currentLevel.title,
-          badge: gamification.currentLevel.badge,
-          xp: gamification.xp,
+          level: gamification?.currentLevel?.level ?? 1,
+          title: gamification?.currentLevel?.title ?? 'Iniciante',
+          badge: gamification?.currentLevel?.badge ?? '🌱',
+          xp: gamification?.xp ?? 0,
         }}
         onOpenUserDrawer={() => setIsUserDrawerOpen(true)}
         onOpenBackupModal={() => setIsBackupModalOpen(true)}

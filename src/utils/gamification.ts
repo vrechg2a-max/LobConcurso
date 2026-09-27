@@ -50,17 +50,26 @@ export function saveStoredDailyGoal(config: DailyGoalConfig): void {
 }
 
 export function calculateConcurseiroGamification(
-  questions: Question[],
-  flashcards: Flashcard[],
-  materials: StudyMaterial[],
-  activities: ActivityLog[],
+  questions?: Question[] | null,
+  flashcards?: Flashcard[] | null,
+  materials?: StudyMaterial[] | null,
+  activities?: ActivityLog[] | null,
   goalConfig: DailyGoalConfig = getStoredDailyGoal()
 ) {
+  const safeQuestions = Array.isArray(questions) ? questions : [];
+  const safeFlashcards = Array.isArray(flashcards) ? flashcards : [];
+  const safeMaterials = Array.isArray(materials) ? materials : [];
+  const safeActivities = Array.isArray(activities) ? activities : [];
+  const safeGoal =
+    goalConfig && goalConfig.questionsTarget && goalConfig.flashcardsTarget
+      ? goalConfig
+      : DEFAULT_DAILY_GOAL;
+
   // XP calculation
-  const totalQuestionsAnswered = questions.filter((q) => q.attempts > 0).length;
-  const totalQuestionsCorrect = questions.filter((q) => q.userLastResult === 'correct').length;
-  const totalFlashcardsReviewed = flashcards.filter((f) => (f.repetitions || 0) > 0).length;
-  const totalSummaries = materials.length;
+  const totalQuestionsAnswered = safeQuestions.filter((q) => q && q.attempts > 0).length;
+  const totalQuestionsCorrect = safeQuestions.filter((q) => q && q.userLastResult === 'correct').length;
+  const totalFlashcardsReviewed = safeFlashcards.filter((f) => f && (f.repetitions || 0) > 0).length;
+  const totalSummaries = safeMaterials.length;
 
   const xp =
     totalQuestionsAnswered * 10 +
@@ -70,7 +79,7 @@ export function calculateConcurseiroGamification(
 
   // Determine current level
   let currentLevel = LEVELS[0];
-  let nextLevel = LEVELS[1];
+  let nextLevel = LEVELS[1] || LEVELS[0];
 
   for (let i = 0; i < LEVELS.length; i++) {
     if (xp >= LEVELS[i].minXp && xp < LEVELS[i].maxXp) {
@@ -92,21 +101,21 @@ export function calculateConcurseiroGamification(
   // Today's Date in local time format YYYY-MM-DD
   const todayStr = new Date().toISOString().slice(0, 10);
 
-  const todayActivities = activities.filter((a) => {
-    return a.date && a.date.slice(0, 10) === todayStr;
+  const todayActivities = safeActivities.filter((a) => {
+    return a && a.date && a.date.slice(0, 10) === todayStr;
   });
 
   const questionsAnsweredToday = todayActivities.filter((a) => a.action === 'question').length;
   const flashcardsReviewedToday = todayActivities.filter((a) => a.action === 'flashcard').length;
 
-  const questionsGoalPct = Math.min(100, Math.round((questionsAnsweredToday / goalConfig.questionsTarget) * 100));
-  const flashcardsGoalPct = Math.min(100, Math.round((flashcardsReviewedToday / goalConfig.flashcardsTarget) * 100));
+  const questionsGoalPct = Math.min(100, Math.round((questionsAnsweredToday / Math.max(1, safeGoal.questionsTarget)) * 100));
+  const flashcardsGoalPct = Math.min(100, Math.round((flashcardsReviewedToday / Math.max(1, safeGoal.flashcardsTarget)) * 100));
 
   const overallDailyPct = Math.min(
     100,
     Math.round(
       ((questionsAnsweredToday + flashcardsReviewedToday) /
-        (goalConfig.questionsTarget + goalConfig.flashcardsTarget)) *
+        Math.max(1, safeGoal.questionsTarget + safeGoal.flashcardsTarget)) *
         100
     )
   );
@@ -122,8 +131,8 @@ export function calculateConcurseiroGamification(
     levelTotalXp,
     questionsAnsweredToday,
     flashcardsReviewedToday,
-    questionsTarget: goalConfig.questionsTarget,
-    flashcardsTarget: goalConfig.flashcardsTarget,
+    questionsTarget: safeGoal.questionsTarget,
+    flashcardsTarget: safeGoal.flashcardsTarget,
     questionsGoalPct,
     flashcardsGoalPct,
     overallDailyPct,

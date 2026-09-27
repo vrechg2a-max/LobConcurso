@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Bold,
   Italic,
@@ -26,7 +26,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   placeholder = 'Type or paste your structured summary here...',
   minHeight = '300px',
 }) => {
-  const [isPreview, setIsPreview] = React.useState(false);
+  const [isPreview, setIsPreview] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const insertFormatting = (prefix: string, suffix: string = '', defaultPlaceholder: string = '') => {
