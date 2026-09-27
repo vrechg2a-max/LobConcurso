@@ -23,7 +23,7 @@ interface UserDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   user: User | null;
-  onNavigate: (tab: 'dashboard' | 'materials' | 'questions' | 'flashcards') => void;
+  onNavigate: (tab: 'dashboard' | 'materials' | 'questions' | 'flashcards' | 'edital') => void;
   onOpenProfileModal: () => void;
   onOpenBackupModal: () => void;
   onOpenMobileModal: () => void;
@@ -156,12 +156,17 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
                   type="button"
                   onClick={() => {
                     onClose();
-                    onNavigate('questions');
+                    onNavigate('edital');
                   }}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/70 text-sm font-medium transition-colors text-left cursor-pointer"
+                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/70 text-sm font-medium transition-colors text-left cursor-pointer"
                 >
-                  <Flame className="w-4 h-4 text-amber-500" />
-                  <span>Assuntos Mais Frequentes</span>
+                  <div className="flex items-center gap-3">
+                    <Flame className="w-4 h-4 text-amber-500 fill-amber-400" />
+                    <span>Edital Verticalizado & Termômetro</span>
+                  </div>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                    Termômetro
+                  </span>
                 </button>
               </nav>
             </div>

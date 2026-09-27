@@ -38,49 +38,32 @@ const STORAGE_KEY = 'lob_mascot_gemini_chat_history_v1';
 const INITIAL_GREETING: MascotChatMessage = {
   id: 'msg-greeting-default',
   role: 'assistant',
-  content: `Olá, futuro(a) aprovado(a)! 🎓 Eu sou o seu **Mascote Examinador IA**.
+  content: `E aí, concurseiro! 🐺 Sou o **Lobo Tático** do LOB Concursos.
 
-Qual é a sua dúvida nos seus estudos hoje? Posso:
-• **Explicar qualquer artigo** ou dispositivo de Lei Seca;
-• **Desvendar pegadinhas** clássicas de bancas examinadoras (Cebraspe, FGV, FCC, VUNESP);
-• **Criar mnemônicos** para você nunca mais esquecer um prazo ou regra;
-• **Resolver ou comentar questões** que você achar difíceis;
-• **Te testar com perguntas táticas** no estilo da sua banca!
-
-Como posso te ajudar agora? Escolha uma sugestão abaixo ou digite sua pergunta! 👇`,
+Qual é a sua dúvida agora? Mande seu artigo, dispositivo ou questão. Vou direto ao ponto, sem enrolação.`,
   timestamp: new Date().toISOString(),
 };
 
 const SUGGESTION_PROMPTS = [
   {
     icon: Scale,
-    label: 'Concussão vs Corrupção Passiva',
-    prompt: 'Qual é a diferença nuclear entre os crimes de Concussão e Corrupção Passiva no Código Penal e como as bancas tentam confundir?',
+    label: '⚖️ Concussão vs Corrupção',
+    prompt: 'Qual a diferença nuclear entre Concussão e Corrupção Passiva no Código Penal e como as bancas tentam confundir? Seja ultra-direto.',
   },
   {
     icon: AlertTriangle,
-    label: 'Pegadinhas da Lei 8.112/90',
-    prompt: 'Quais são as pegadinhas clássicas de prazos e penalidades disciplinares na Lei 8.112/90 cobradas por bancas como Cebraspe e FGV?',
+    label: '🚨 Pegadinhas Lei 8.112',
+    prompt: 'Aponte as pegadinhas mais cruéis de prazos e penalidades da Lei 8.112/90 em no máximo 3 tópicos.',
   },
   {
     icon: Brain,
-    label: 'Mnemônico para o LIMPE (Art. 37 CF)',
-    prompt: 'Explique os princípios expressos da Administração Pública no Art. 37 da CF (LIMPE) com um esquema e mnemônico prático para memorização.',
+    label: '🧠 Mnemônico LIMPE',
+    prompt: 'Esquematize o Art. 37 da CF (LIMPE) e o que as bancas trocam para induzir o candidato ao erro.',
   },
   {
     icon: HelpCircle,
-    label: 'Me teste estilo Cebraspe',
-    prompt: 'Elabore 1 assertiva inédita e desafiadora de concurso no formato CERTO ou ERRADO sobre Direito Constitucional ou Administrativo e me desafie a responder!',
-  },
-  {
-    icon: Shield,
-    label: 'Guarda Municipal (Lei 13.022)',
-    prompt: 'Quais são os princípios mínimos e as principais competências específicas das Guardas Municipais segundo a Lei Federal nº 13.022/2014?',
-  },
-  {
-    icon: BookOpen,
-    label: 'Reparação no Peculato Culposo',
-    prompt: 'Como funciona a reparação do dano no peculato culposo (Art. 312, § 3º, CP) e por que essa regra não se aplica à modalidade dolosa?',
+    label: '🎯 Desafio 1 Item',
+    prompt: 'Elabore 1 assertiva inédita no formato CERTO ou ERRADO estilo Cebraspe de Direito Administrativo para eu julgar!',
   },
 ];
 
@@ -112,6 +95,7 @@ export const MascotChatModal: React.FC<MascotChatModalProps> = ({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const sendMessageRef = useRef<(text?: string) => Promise<void>>(() => Promise.resolve());
 
   // Auto-scroll when messages update
   const scrollToBottom = (smooth = true) => {
@@ -133,6 +117,29 @@ export const MascotChatModal: React.FC<MascotChatModalProps> = ({
       localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
     } catch (_) {}
   }, [messages, isLoading]);
+
+  // Listener for instant question doubts from the question card
+  useEffect(() => {
+    const handleDoubtEvent = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (!detail) return;
+      const doubtPrompt = `Estou resolvendo esta questão de ${detail.subject || 'Concurso'} (${detail.examBoardRef || 'Banca'}):
+
+"${detail.questionText}"
+
+Gabarito Oficial: ${detail.correctAnswer}.
+${detail.explanation ? `\nJustificativa da banca: ${detail.explanation}` : ''}
+
+Explique de forma direta e sem rodeios por que essa alternativa é o gabarito e qual é a principal pegadinha da banca.`;
+      
+      setTimeout(() => {
+        sendMessageRef.current(doubtPrompt);
+      }, 100);
+    };
+
+    window.addEventListener('open-mascot-question-doubt', handleDoubtEvent);
+    return () => window.removeEventListener('open-mascot-question-doubt', handleDoubtEvent);
+  }, []);
 
   // Adjust textarea height automatically
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -236,6 +243,8 @@ export const MascotChatModal: React.FC<MascotChatModalProps> = ({
       setIsLoading(false);
     }
   };
+
+  sendMessageRef.current = sendMessage;
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -409,28 +418,23 @@ export const MascotChatModal: React.FC<MascotChatModalProps> = ({
 
                     {/* Suggestion Chips inside initial greeting */}
                     {isFirstMessage && messages.length === 1 && (
-                      <div className="pt-2 mt-2 border-t border-indigo-100 space-y-1.5">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 flex items-center gap-1">
-                          <Sparkles className="w-3 h-3" />
-                          <span>Dúvidas Frequentes de Concurso</span>
+                      <div className="pt-2 mt-2 border-t border-slate-100 space-y-1.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                          <Sparkles className="w-3 h-3 text-indigo-500" />
+                          <span>Dúvidas Frequentes (Clique Rápido)</span>
                         </span>
-                        <div className="grid grid-cols-1 gap-1.5">
-                          {SUGGESTION_PROMPTS.map((sug, i) => {
-                            const IconComponent = sug.icon;
-                            return (
-                              <button
-                                key={i}
-                                type="button"
-                                onClick={() => sendMessage(sug.prompt)}
-                                className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 hover:bg-indigo-50/70 border border-slate-200/70 hover:border-indigo-200 text-left transition-all text-[11px] font-medium text-slate-700 hover:text-indigo-900 group/btn cursor-pointer"
-                              >
-                                <div className="p-1 rounded-md bg-white group-hover/btn:bg-indigo-100 text-indigo-600 transition-colors">
-                                  <IconComponent className="w-3 h-3" />
-                                </div>
-                                <span className="flex-1 truncate">{sug.label}</span>
-                              </button>
-                            );
-                          })}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                          {SUGGESTION_PROMPTS.map((sug, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => sendMessage(sug.prompt)}
+                              className="px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 text-left transition-all text-[11px] font-semibold text-slate-700 hover:text-indigo-800 cursor-pointer truncate"
+                              title={sug.prompt}
+                            >
+                              {sug.label}
+                            </button>
+                          ))}
                         </div>
                       </div>
                     )}

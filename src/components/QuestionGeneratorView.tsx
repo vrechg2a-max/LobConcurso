@@ -29,6 +29,9 @@ import {
   Award,
   Globe,
   ExternalLink,
+  Zap,
+  BookMarked,
+  AlertTriangle,
 } from 'lucide-react';
 import { Question, StudyMaterial, QuestionOption } from '../types';
 import { MascotAvatar } from './MascotAvatar';
@@ -126,6 +129,13 @@ interface QuestionGeneratorViewProps {
     examBoardRef: string;
   }) => Promise<boolean>;
   onDeleteQuestion: (id: string) => Promise<void>;
+  onSaveFlashcard?: (cardData: {
+    front: string;
+    back: string;
+    subject: string;
+    materialId?: string;
+    difficulty?: 'Fácil' | 'Médio' | 'Difícil';
+  }) => Promise<boolean>;
 }
 
 export const QuestionGeneratorView: React.FC<QuestionGeneratorViewProps> = ({
@@ -135,10 +145,18 @@ export const QuestionGeneratorView: React.FC<QuestionGeneratorViewProps> = ({
   onGenerateQuestions,
   onAnswerQuestion,
   onDeleteQuestion,
+  onSaveFlashcard,
 }) => {
   // Mode: focus (1 per screen) vs list (all in list)
   const [viewMode, setViewMode] = useState<'focus' | 'list'>('focus');
   const [currentFocusIndex, setCurrentFocusIndex] = useState<number>(0);
+
+  // Caderno de Erros count
+  const incorrectCount = useMemo(() => {
+    return questions.filter(
+      (q) => q.userLastResult === 'incorrect' || (q.attempts > 0 && q.correctAttempts === 0)
+    ).length;
+  }, [questions]);
 
   // Gran Questões Filter State
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -660,7 +678,6 @@ export const QuestionGeneratorView: React.FC<QuestionGeneratorViewProps> = ({
                 { id: 'unanswered', label: 'Não resolvidas' },
                 { id: 'answered', label: 'Resolvidas' },
                 { id: 'correct', label: 'Certas' },
-                { id: 'incorrect', label: 'Erradas' },
               ].map((s) => (
                 <button
                   key={s.id}
@@ -678,6 +695,32 @@ export const QuestionGeneratorView: React.FC<QuestionGeneratorViewProps> = ({
                   {s.label}
                 </button>
               ))}
+
+              {/* Dedicated Caderno de Erros Button */}
+              <button
+                type="button"
+                id="btn-filter-caderno-erros"
+                onClick={() => {
+                  setMyQuestionsFilter('incorrect');
+                  setCurrentFocusIndex(0);
+                }}
+                className={`px-3.5 py-1 rounded-full text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-2xs ${
+                  myQuestionsFilter === 'incorrect'
+                    ? 'bg-rose-600 text-white ring-2 ring-rose-300'
+                    : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200'
+                }`}
+                title="Caderno de Erros: acesse apenas as questões que errou para treinar até 100% de acerto"
+              >
+                <BookMarked className="w-3.5 h-3.5" />
+                <span>Caderno de Erros</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                    myQuestionsFilter === 'incorrect' ? 'bg-white/20 text-white' : 'bg-rose-200 text-rose-900'
+                  }`}
+                >
+                  {incorrectCount}
+                </span>
+              </button>
             </div>
 
             {/* Row: Tipo de questão */}
@@ -1065,33 +1108,98 @@ export const QuestionGeneratorView: React.FC<QuestionGeneratorViewProps> = ({
         </div>
       </div>
 
+      {/* Caderno de Erros Active Banner */}
+      {myQuestionsFilter === 'incorrect' && (
+        <div className="bg-gradient-to-r from-rose-50 via-orange-50 to-rose-50 border border-rose-200 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fade-in">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+              <BookMarked className="w-5 h-5 text-rose-600" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-bold text-rose-950">
+                  Caderno de Erros Automático
+                </h4>
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-rose-200 text-rose-900 font-extrabold">
+                  {incorrectCount} {incorrectCount === 1 ? 'questão' : 'questões'}
+                </span>
+              </div>
+              <p className="text-xs text-rose-800 mt-0.5 leading-relaxed">
+                Treine suas falhas até dominar 100%! Assim que você refaz uma questão e marca a alternativa correta, ela sai automaticamente do seu Caderno de Erros.
+              </p>
+            </div>
+          </div>
+          {filteredQuestions.length > 0 && viewMode !== 'focus' && (
+            <button
+              type="button"
+              onClick={() => {
+                setViewMode('focus');
+                setCurrentFocusIndex(0);
+              }}
+              className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs transition-colors shrink-0 shadow-xs cursor-pointer flex items-center gap-1.5"
+            >
+              <Target className="w-3.5 h-3.5" />
+              <span>Modo Foco no Erro</span>
+            </button>
+          )}
+        </div>
+      )}
+
       {/* 3. ZERO STATE OR QUESTION VIEW */}
       {filteredQuestions.length === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center space-y-3">
-          <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 mx-auto flex items-center justify-center">
-            <BookOpen className="w-6 h-6" />
+        myQuestionsFilter === 'incorrect' ? (
+          <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-10 text-center space-y-3">
+            <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 mx-auto flex items-center justify-center">
+              <Award className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-emerald-950">Caderno de Erros Zerado! 🏆</h3>
+            <p className="text-xs text-emerald-800 max-w-md mx-auto">
+              Parabéns! Você não possui nenhuma questão incorreta pendente. Todas as questões respondidas até agora foram acertadas ou superadas com sucesso.
+            </p>
+            <div className="pt-2 flex items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => setMyQuestionsFilter('all')}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs"
+              >
+                Ver Todas as Questões
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsGeneratorExpanded(true)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer"
+              >
+                Gerar Mais Questões
+              </button>
+            </div>
           </div>
-          <h3 className="text-base font-bold text-slate-800">Nenhuma questão encontrada</h3>
-          <p className="text-xs text-slate-500 max-w-sm mx-auto">
-            Não há questões correspondentes aos filtros aplicados. Tente limpar os filtros ou gerar novas questões com IA.
-          </p>
-          <div className="pt-2 flex items-center justify-center gap-2">
-            <button
-              type="button"
-              onClick={handleClearFilters}
-              className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer"
-            >
-              Limpar Filtros
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsGeneratorExpanded(true)}
-              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer"
-            >
-              Gerar Questões com IA
-            </button>
+        ) : (
+          <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center space-y-3">
+            <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 mx-auto flex items-center justify-center">
+              <BookOpen className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-slate-800">Nenhuma questão encontrada</h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              Não há questões correspondentes aos filtros aplicados. Tente limpar os filtros ou gerar novas questões com IA.
+            </p>
+            <div className="pt-2 flex items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={handleClearFilters}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer"
+              >
+                Limpar Filtros
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsGeneratorExpanded(true)}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer"
+              >
+                Gerar Questões com IA
+              </button>
+            </div>
           </div>
-        </div>
+        )
       ) : viewMode === 'focus' ? (
         /* ========================================================================= */
         /* MODO FOCO (1 QUESTÃO POR VEZ COM NAVEGADOR NUMÉRICO)                       */
@@ -1175,6 +1283,7 @@ export const QuestionGeneratorView: React.FC<QuestionGeneratorViewProps> = ({
                 setActiveTabPerQuestion((prev) => ({ ...prev, [activeFocusQuestion.id]: tab }))
               }
               onDelete={() => onDeleteQuestion(activeFocusQuestion.id)}
+              onSaveFlashcard={onSaveFlashcard}
               onNext={() =>
                 safeFocusIndex < filteredQuestions.length - 1 && setCurrentFocusIndex(safeFocusIndex + 1)
               }
@@ -1200,6 +1309,7 @@ export const QuestionGeneratorView: React.FC<QuestionGeneratorViewProps> = ({
               activeTab={activeTabPerQuestion[q.id] || 'comment'}
               onTabChange={(tab) => setActiveTabPerQuestion((prev) => ({ ...prev, [q.id]: tab }))}
               onDelete={() => onDeleteQuestion(q.id)}
+              onSaveFlashcard={onSaveFlashcard}
             />
           ))}
         </div>
@@ -1223,6 +1333,13 @@ interface QuestionCardItemProps {
   activeTab: 'comment' | 'trap' | 'stats';
   onTabChange: (tab: 'comment' | 'trap' | 'stats') => void;
   onDelete: () => void;
+  onSaveFlashcard?: (cardData: {
+    front: string;
+    back: string;
+    subject: string;
+    materialId?: string;
+    difficulty?: 'Fácil' | 'Médio' | 'Difícil';
+  }) => Promise<boolean>;
   onNext?: () => void;
 }
 
@@ -1238,9 +1355,52 @@ const QuestionCardItem: React.FC<QuestionCardItemProps> = ({
   activeTab,
   onTabChange,
   onDelete,
+  onSaveFlashcard,
   onNext,
 }) => {
   const isEvaluated = answerResult !== undefined;
+  const [isFlashcardSaved, setIsFlashcardSaved] = useState(false);
+  const [isSavingFlashcard, setIsSavingFlashcard] = useState(false);
+
+  const handleCreateFlashcard = async () => {
+    if (!onSaveFlashcard || isFlashcardSaved || isSavingFlashcard) return;
+    setIsSavingFlashcard(true);
+    try {
+      const front = `[${q.subject} • ${q.examBoardRef || 'Concursos'}]\n\n${q.questionText}`;
+      const back = `**Gabarito Correto:** (${q.correctAnswer})\n\n**Fundamentação Jurídica:**\n${q.explanation}${
+        q.distractorTrapAnalysis ? `\n\n**🚨 Raio-X da Pegadinha:**\n${q.distractorTrapAnalysis}` : ''
+      }`;
+      const ok = await onSaveFlashcard({
+        front,
+        back,
+        subject: q.subject,
+        materialId: q.materialId,
+        difficulty: q.difficulty === 'Fácil' ? 'Fácil' : q.difficulty === 'Médio' ? 'Médio' : 'Difícil',
+      });
+      if (ok) {
+        setIsFlashcardSaved(true);
+        setTimeout(() => setIsFlashcardSaved(false), 3000);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsSavingFlashcard(false);
+    }
+  };
+
+  const handleAskLobo = () => {
+    window.dispatchEvent(
+      new CustomEvent('open-mascot-question-doubt', {
+        detail: {
+          questionText: q.questionText,
+          subject: q.subject,
+          correctAnswer: q.correctAnswer,
+          explanation: q.explanation,
+          examBoardRef: q.examBoardRef,
+        },
+      })
+    );
+  };
 
   return (
     <div
@@ -1292,6 +1452,12 @@ const QuestionCardItem: React.FC<QuestionCardItemProps> = ({
                 : '📜 Literalidade'}
             </span>
           )}
+          {(q.userLastResult === 'incorrect' || (q.attempts > 0 && q.correctAttempts === 0)) && (
+            <span className="px-2 py-0.5 rounded-lg text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200 inline-flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3 text-rose-500" />
+              <span>Caderno de Erros</span>
+            </span>
+          )}
           {(q.isRealExamQuestion || q.sourceUrl) && (
             <span className="px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 inline-flex items-center gap-1 shadow-2xs">
               <Globe className="w-3 h-3 text-blue-600" />
@@ -1317,14 +1483,53 @@ const QuestionCardItem: React.FC<QuestionCardItemProps> = ({
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={onDelete}
-          className="text-slate-400 hover:text-rose-600 p-1 rounded-lg transition-colors cursor-pointer"
-          title="Excluir questão do banco"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
+        {/* Action Buttons in Header: 1-Click Flashcard, Lobo Doubt, Delete */}
+        <div className="flex items-center gap-2">
+          {onSaveFlashcard && (
+            <button
+              type="button"
+              onClick={handleCreateFlashcard}
+              disabled={isSavingFlashcard}
+              className={`px-2.5 py-1 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs ${
+                isFlashcardSaved
+                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                  : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200'
+              }`}
+              title="Salvar esta questão e pegadinha diretamente como Flashcard"
+            >
+              {isFlashcardSaved ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Flashcard Salvo!</span>
+                </>
+              ) : (
+                <>
+                  <Zap className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Criar Flashcard</span>
+                </>
+              )}
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={handleAskLobo}
+            className="px-2.5 py-1 rounded-xl text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 inline-flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+            title="Tirar dúvida direta com o Lobo Tático sobre esta questão"
+          >
+            <MascotAvatar size="xs" animated={false} interactive={false} />
+            <span className="hidden sm:inline">Dúvida com o Lobo</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onDelete}
+            className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg transition-colors cursor-pointer"
+            title="Excluir questão do banco"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Enunciado Box */}

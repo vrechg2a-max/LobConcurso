@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Smartphone, QrCode, Copy, Check, ExternalLink, ShieldCheck, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Smartphone, QrCode, Copy, Check, ExternalLink, ShieldCheck, X, Download } from 'lucide-react';
 
 interface MobileAccessModalProps {
   isOpen: boolean;
@@ -8,11 +8,39 @@ interface MobileAccessModalProps {
 
 export const MobileAccessModal: React.FC<MobileAccessModalProps> = ({ isOpen, onClose }) => {
   const [copied, setCopied] = useState(false);
+  const [canInstallPwa, setCanInstallPwa] = useState(false);
+
+  useEffect(() => {
+    if ((window as any).deferredPwaPrompt) {
+      setCanInstallPwa(true);
+    }
+    const handlePwaReady = () => setCanInstallPwa(true);
+    window.addEventListener('pwa-install-ready', handlePwaReady);
+    return () => window.removeEventListener('pwa-install-ready', handlePwaReady);
+  }, []);
+
+  const handleInstallPwa = async () => {
+    const promptEvent = (window as any).deferredPwaPrompt;
+    if (!promptEvent) {
+      alert('Para instalar no celular: Abra no Chrome e clique nos 3 pontinhos -> "Adicionar à tela inicial" ou "Instalar Aplicativo". No iPhone Safari: toque em Compartilhar -> "Adicionar à Tela de Início".');
+      return;
+    }
+    promptEvent.prompt();
+    const result = await promptEvent.userChoice;
+    if (result.outcome === 'accepted') {
+      (window as any).deferredPwaPrompt = null;
+      setCanInstallPwa(false);
+    }
+  };
 
   if (!isOpen) return null;
 
-  // The shared preview URL provided by Google AI Studio
-  const sharedUrl = 'https://ais-pre-vtervzxkl75xndtg7rp4fm-479754191253.us-west1.run.app';
+  // Use current site URL if available, fallback to preview
+  const currentOrigin = typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('localhost')
+    ? window.location.origin
+    : 'https://ais-pre-vtervzxkl75xndtg7rp4fm-479754191253.us-west1.run.app';
+
+  const sharedUrl = currentOrigin;
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
     sharedUrl
   )}&margin=10`;
@@ -111,6 +139,21 @@ export const MobileAccessModal: React.FC<MobileAccessModalProps> = ({ isOpen, on
                 )}
               </button>
             </div>
+          </div>
+
+          {/* PWA Install Button */}
+          <div className="pt-2 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={handleInstallPwa}
+              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
+            >
+              <Download className="w-4 h-4 text-indigo-200" />
+              <span>Instalar como Aplicativo (PWA) no Celular</span>
+            </button>
+            <p className="text-[11px] text-slate-500 text-center mt-1.5">
+              Funciona como app nativo, sem barra de navegação e com acesso rápido na tela inicial.
+            </p>
           </div>
 
           {/* Direct Open Button */}

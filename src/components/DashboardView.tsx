@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Award,
   CheckCircle2,
@@ -16,15 +16,26 @@ import {
   HardDrive,
   Smartphone,
   QrCode,
+  Zap,
+  Flame,
+  Settings,
 } from 'lucide-react';
-import { PerformanceMetrics, User, StudyMaterial } from '../types';
+import { PerformanceMetrics, User, StudyMaterial, Question, Flashcard } from '../types';
 import { MascotAvatar } from './MascotAvatar';
+import {
+  calculateConcurseiroGamification,
+  getStoredDailyGoal,
+  saveStoredDailyGoal,
+  DailyGoalConfig,
+} from '../utils/gamification';
 
 interface DashboardViewProps {
   metrics: PerformanceMetrics | null;
   user: User | null;
   materials: StudyMaterial[];
-  onNavigate: (tab: 'materials' | 'questions' | 'flashcards') => void;
+  questions?: Question[];
+  flashcards?: Flashcard[];
+  onNavigate: (tab: 'materials' | 'questions' | 'flashcards' | 'edital') => void;
   onUpdateUser: (userData: Partial<User>) => Promise<void>;
   onOpenBackupModal?: () => void;
   onOpenMobileModal?: () => void;
@@ -34,6 +45,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   metrics,
   user,
   materials,
+  questions,
+  flashcards,
   onNavigate,
   onUpdateUser,
   onOpenBackupModal,
@@ -42,6 +55,32 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [isEditingExam, setIsEditingExam] = useState(false);
   const [targetExamInput, setTargetExamInput] = useState(user?.targetExam || 'Carreira Jurídica / Fiscal');
   const [targetDateInput, setTargetDateInput] = useState(user?.targetDate || '2026-11-15');
+
+  // Daily Goal & Gamification State
+  const [goalConfig, setGoalConfig] = useState<DailyGoalConfig>(getStoredDailyGoal);
+  const [isEditingGoal, setIsEditingGoal] = useState(false);
+  const [tempQuestionsGoal, setTempQuestionsGoal] = useState(goalConfig.questionsTarget);
+  const [tempFlashcardsGoal, setTempFlashcardsGoal] = useState(goalConfig.flashcardsTarget);
+
+  const gamification = useMemo(() => {
+    return calculateConcurseiroGamification(
+      questions || [],
+      flashcards || [],
+      materials,
+      metrics?.recentActivity || [],
+      goalConfig
+    );
+  }, [questions, flashcards, materials, metrics?.recentActivity, goalConfig]);
+
+  const handleSaveGoal = () => {
+    const updated = {
+      questionsTarget: Math.max(5, tempQuestionsGoal),
+      flashcardsTarget: Math.max(5, tempFlashcardsGoal),
+    };
+    setGoalConfig(updated);
+    saveStoredDailyGoal(updated);
+    setIsEditingGoal(false);
+  };
 
   useEffect(() => {
     if (user?.targetExam) setTargetExamInput(user.targetExam);
@@ -175,6 +214,186 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <Sparkles className="w-4 h-4 text-indigo-200" />
               <span>Gerar Questões</span>
             </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Gamificação & Meta Diária do Concurseiro */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Card 1: Nível & XP do Concurseiro */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
+                <span>Nível do Concurseiro</span>
+              </span>
+              <span className="text-xs font-mono font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
+                {gamification.xp} XP
+              </span>
+            </div>
+
+            <div className="flex items-center gap-3 mt-1">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-2xl shrink-0 shadow-2xs">
+                {gamification.currentLevel.badge}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-black text-slate-900">
+                    {gamification.currentLevel.title}
+                  </h3>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                    Nv. {gamification.currentLevel.level}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {gamification.currentLevel.level === 6
+                    ? 'Nível Máximo Conquistado! Parabéns!'
+                    : `Faltam ${Math.max(0, gamification.nextLevel.minXp - gamification.xp)} XP para ${gamification.nextLevel.title}`}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 pt-3 border-t border-slate-100">
+            <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1.5">
+              <span>Progresso para Nível {gamification.nextLevel.level}</span>
+              <span className="font-bold text-slate-700 font-mono">{gamification.levelProgressPct}%</span>
+            </div>
+            <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+              <div
+                className="bg-indigo-600 h-2 rounded-full transition-all duration-700"
+                style={{ width: `${gamification.levelProgressPct}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Card 2: Meta Diária de Questões & Flashcards */}
+        <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <Target className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Meta Diária de Estudos</span>
+                </span>
+                {gamification.isGoalMet && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                    <span>Meta Concluída Hoje! 🔥</span>
+                  </span>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsEditingGoal(!isEditingGoal)}
+                className="text-xs text-slate-500 hover:text-indigo-600 font-medium inline-flex items-center gap-1 transition-colors cursor-pointer"
+              >
+                <Settings className="w-3 h-3" />
+                <span>{isEditingGoal ? 'Fechar' : 'Ajustar Meta'}</span>
+              </button>
+            </div>
+
+            {isEditingGoal ? (
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-3 animate-fade-in text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-semibold text-slate-700 block mb-1">
+                      Meta de Questões por Dia:
+                    </label>
+                    <input
+                      type="number"
+                      min={5}
+                      max={200}
+                      value={tempQuestionsGoal}
+                      onChange={(e) => setTempQuestionsGoal(parseInt(e.target.value) || 10)}
+                      className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-semibold text-slate-700 block mb-1">
+                      Meta de Flashcards por Dia:
+                    </label>
+                    <input
+                      type="number"
+                      min={5}
+                      max={200}
+                      value={tempFlashcardsGoal}
+                      onChange={(e) => setTempFlashcardsGoal(parseInt(e.target.value) || 10)}
+                      className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSaveGoal}
+                    className="px-3.5 py-1.5 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition-colors cursor-pointer shadow-xs"
+                  >
+                    Salvar Metas
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
+                {/* Questions Daily Progress */}
+                <div className="p-3 bg-slate-50/80 border border-slate-200/80 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                      <BookOpen className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Questões Hoje</span>
+                    </span>
+                    <span className="text-xs font-mono font-bold text-slate-900">
+                      {gamification.questionsAnsweredToday} / {gamification.questionsTarget}
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-200/80 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-indigo-600 h-2 rounded-full transition-all duration-500"
+                      style={{ width: `${gamification.questionsGoalPct}%` }}
+                    />
+                  </div>
+                  <span className="text-[10px] text-slate-500 block">
+                    {gamification.questionsGoalPct}% atingido hoje
+                  </span>
+                </div>
+
+                {/* Flashcards Daily Progress */}
+                <div className="p-3 bg-slate-50/80 border border-slate-200/80 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Flashcards Hoje</span>
+                    </span>
+                    <span className="text-xs font-mono font-bold text-slate-900">
+                      {gamification.flashcardsReviewedToday} / {gamification.flashcardsTarget}
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-200/80 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-amber-500 h-2 rounded-full transition-all duration-500"
+                      style={{ width: `${gamification.flashcardsGoalPct}%` }}
+                    />
+                  </div>
+                  <span className="text-[10px] text-slate-500 block">
+                    {gamification.flashcardsGoalPct}% atingido hoje
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+            <span className="text-slate-500">
+              {gamification.isGoalMet
+                ? 'Todas as metas diárias concluídas! Continue revisando para subir de nível!'
+                : `Ainda faltam ${Math.max(0, gamification.questionsTarget - gamification.questionsAnsweredToday)} questões e ${Math.max(0, gamification.flashcardsTarget - gamification.flashcardsReviewedToday)} flashcards hoje.`}
+            </span>
+            <span className="font-bold text-indigo-700 font-mono">
+              Total do Dia: {gamification.overallDailyPct}%
+            </span>
           </div>
         </div>
       </div>

@@ -25,6 +25,16 @@ export const MascotCompanion: React.FC<MascotCompanionProps> = ({
     setShowTooltip(false);
   };
 
+  useEffect(() => {
+    const handleDoubt = () => {
+      setIsDismissed(false);
+      setIsChatOpen(true);
+      setShowTooltip(false);
+    };
+    window.addEventListener('open-mascot-question-doubt', handleDoubt);
+    return () => window.removeEventListener('open-mascot-question-doubt', handleDoubt);
+  }, []);
+
   const handleOpenAvatarSettings = () => {
     window.dispatchEvent(new Event('open-mascot-upload'));
   };

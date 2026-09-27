@@ -8,15 +8,18 @@ import {
   Smartphone,
   HardDrive,
   User as UserIcon,
+  Flame,
+  Zap,
 } from 'lucide-react';
 import { PerformanceMetrics, User } from '../types';
 import { MascotAvatar } from './MascotAvatar';
 
 interface HeaderProps {
-  currentTab: 'dashboard' | 'materials' | 'questions' | 'flashcards';
-  onTabChange: (tab: 'dashboard' | 'materials' | 'questions' | 'flashcards') => void;
+  currentTab: 'dashboard' | 'materials' | 'questions' | 'flashcards' | 'edital';
+  onTabChange: (tab: 'dashboard' | 'materials' | 'questions' | 'flashcards' | 'edital') => void;
   metrics: PerformanceMetrics | null;
   user: User | null;
+  levelBadge?: { level: number; title: string; badge: string; xp: number };
   onOpenUserDrawer: () => void;
   onOpenBackupModal: () => void;
   onOpenMobileModal: () => void;
@@ -27,6 +30,7 @@ export const Header: React.FC<HeaderProps> = ({
   onTabChange,
   metrics,
   user,
+  levelBadge,
   onOpenUserDrawer,
   onOpenBackupModal,
   onOpenMobileModal,
@@ -115,11 +119,38 @@ export const Header: React.FC<HeaderProps> = ({
                   </span>
                 )}
               </button>
+
+              {/* Edital Verticalizado Tab */}
+              <button
+                type="button"
+                id="nav-link-edital"
+                onClick={() => onTabChange('edital')}
+                className={`px-3 py-2 rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1.5 ${
+                  currentTab === 'edital'
+                    ? 'text-indigo-600 font-bold bg-indigo-50/50'
+                    : 'hover:text-slate-900 hover:bg-slate-50'
+                }`}
+              >
+                <Flame className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
+                <span>Edital</span>
+              </button>
             </nav>
           </div>
 
-          {/* Right Header Actions: Trophy & User Drawer Pill Button */}
-          <div className="flex items-center gap-3">
+          {/* Right Header Actions: Level, Accuracy, Trophy, User Drawer */}
+          <div className="flex items-center gap-2.5">
+            {/* Concurseiro Level Badge */}
+            {levelBadge && (
+              <div
+                onClick={() => onTabChange('dashboard')}
+                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 cursor-pointer hover:bg-indigo-100 transition-colors shadow-2xs"
+                title={`Nível ${levelBadge.level}: ${levelBadge.title} (${levelBadge.xp} XP acumulados)`}
+              >
+                <span>{levelBadge.badge}</span>
+                <span>Nv. {levelBadge.level} {levelBadge.title}</span>
+              </div>
+            )}
+
             {/* Quick Metrics Accuracy Pill */}
             {metrics && (
               <div className="hidden md:flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full bg-slate-100/90 text-slate-700 border border-slate-200">
@@ -138,7 +169,7 @@ export const Header: React.FC<HeaderProps> = ({
               <Trophy className="w-5 h-5 fill-amber-400/20" />
             </button>
 
-            {/* User Profile Pill Trigger with Mascot (matching Gran Questões pill with hamburger + avatar) */}
+            {/* User Profile Pill Trigger with Mascot */}
             <button
               type="button"
               id="btn-open-user-drawer"
@@ -159,6 +190,7 @@ export const Header: React.FC<HeaderProps> = ({
             { id: 'questions', label: 'Questões' },
             { id: 'materials', label: 'Provas & Resumos' },
             { id: 'flashcards', label: 'Flashcards' },
+            { id: 'edital', label: '🔥 Edital' },
           ].map((tab) => (
             <button
               key={tab.id}

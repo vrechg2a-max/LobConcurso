@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   StudyMaterial,
   Question,
@@ -14,12 +14,14 @@ import { DashboardView } from './components/DashboardView';
 import { StudyMaterialView } from './components/StudyMaterialView';
 import { QuestionGeneratorView } from './components/QuestionGeneratorView';
 import { FlashcardView } from './components/FlashcardView';
+import { EditalVerticalizadoView } from './components/EditalVerticalizadoView';
 import { BackupModal } from './components/BackupModal';
 import { MobileAccessModal } from './components/MobileAccessModal';
 import { UserDrawer } from './components/UserDrawer';
 import { UserProfileModal } from './components/UserProfileModal';
 import { PageBanner } from './components/PageBanner';
 import { MascotCompanion } from './components/MascotCompanion';
+import { calculateConcurseiroGamification } from './utils/gamification';
 import {
   db,
   initializeIndexedDB,
@@ -31,7 +33,7 @@ import {
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<
-    'dashboard' | 'materials' | 'questions' | 'flashcards'
+    'dashboard' | 'materials' | 'questions' | 'flashcards' | 'edital'
   >('questions');
 
   // Local-First State (Single source of truth: IndexedDB via Dexie)
@@ -781,6 +783,16 @@ export default function App() {
     }
   };
 
+  // Gamification computation for level, XP, and daily goals
+  const gamification = useMemo(() => {
+    return calculateConcurseiroGamification(
+      questions,
+      flashcards,
+      materials,
+      metrics?.recentActivity || []
+    );
+  }, [questions, flashcards, materials, metrics?.recentActivity]);
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans selection:bg-indigo-100 selection:text-indigo-900">
       {/* Gran Questões Top Navigation Header */}
@@ -793,6 +805,12 @@ export default function App() {
         }}
         metrics={metrics}
         user={user}
+        levelBadge={{
+          level: gamification.currentLevel.level,
+          title: gamification.currentLevel.title,
+          badge: gamification.currentLevel.badge,
+          xp: gamification.xp,
+        }}
         onOpenUserDrawer={() => setIsUserDrawerOpen(true)}
         onOpenBackupModal={() => setIsBackupModalOpen(true)}
         onOpenMobileModal={() => setIsMobileModalOpen(true)}
@@ -829,6 +847,14 @@ export default function App() {
           title="Flashcards & Repetição Espaçada"
           subtitle="Fixação e retenção de longo prazo da letra de lei com o algoritmo SuperMemo-2 (SM-2)."
           badge="SuperMemo-2"
+        />
+      )}
+      {currentTab === 'edital' && (
+        <PageBanner
+          breadcrumb="Início » Edital"
+          title="Edital Verticalizado & Termômetro"
+          subtitle="Monitore de forma cirúrgica o percentual batido do edital, tópicos estudados, resumos feitos e ciclo de revisão com termômetro dinâmico."
+          badge="Termômetro de Estudos"
         />
       )}
 
@@ -888,6 +914,8 @@ export default function App() {
                 metrics={metrics}
                 user={user}
                 materials={materials}
+                questions={questions}
+                flashcards={flashcards}
                 onNavigate={(tab) => setCurrentTab(tab)}
                 onUpdateUser={handleUpdateUser}
                 onOpenBackupModal={() => setIsBackupModalOpen(true)}
@@ -922,6 +950,7 @@ export default function App() {
                 onAnswerQuestion={handleAnswerQuestion}
                 onSaveManualQuestion={handleSaveManualQuestion}
                 onDeleteQuestion={handleDeleteQuestion}
+                onSaveFlashcard={handleSaveFlashcard}
               />
             )}
 
@@ -935,6 +964,17 @@ export default function App() {
                 onGenerateFlashcards={handleGenerateFlashcards}
                 onReviewFlashcard={handleReviewFlashcard}
                 onDeleteFlashcard={handleDeleteFlashcard}
+              />
+            )}
+
+            {currentTab === 'edital' && (
+              <EditalVerticalizadoView
+                materials={materials}
+                onNavigateToQuestions={(subject) => {
+                  if (subject) setPreselectedSubject(subject);
+                  setCurrentTab('questions');
+                }}
+                targetExam={user?.targetExam}
               />
             )}
           </>
