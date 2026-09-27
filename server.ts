@@ -2166,6 +2166,10 @@ ESTRUTURA CSS BASE PADRÃO:
       resumeInstruction = `O bloco anterior encerrou em: [ÚLTIMO ARTIGO PROCESSADO: Artigo ${lastArticleNumber}]. Inicie a extração ESTRITAMENTE a partir do Artigo ${lastArticleNumber + 1} presente neste arquivo PDF. É terminantemente PROIBIDO repetir dispositivos já abordados.`;
     } else if (lastTopicLabel) {
       resumeInstruction = `O bloco anterior encerrou no tema: [ÚLTIMO TÓPICO PROCESSADO: ${lastTopicLabel}]. Inicie a extração ESTRITAMENTE a partir dos tópicos subsequentes a esse tema neste arquivo PDF. É terminantemente PROIBIDO repetir tópicos já abordados.`;
+    } else {
+      resumeInstruction = `Inicie a extração sequencial a partir do início ou dos tópicos/artigos subsequentes do arquivo PDF sem repetir o que já foi extraído.`;
+    }
+
     // Determinação do chunk textual ativo para garantia de cobertura 100% sem truncamento
     let activeTextChunk = '';
     let isFinishedPrematurely = false;
