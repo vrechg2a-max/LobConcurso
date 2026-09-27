@@ -1,0 +1,14 @@
+# Files to ignore in Antigravity Agent indexing to prevent context window overflow
+node_modules/
+dist/
+build/
+.git/
+*.lock
+bun.lock
+package-lock.json
+data/*.json
+data/database.json
+coverage/
+*.log
+api/index.js
+server.cjs

@@ -1,0 +1,7 @@
+{
+  "name": "LOB Concursos",
+  "description": "Plataforma de alta performance para concursos públicos com esquematização tática de lei seca, gerador de questões Cebraspe/FGV/FCC e flashcards com repetição espaçada.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
