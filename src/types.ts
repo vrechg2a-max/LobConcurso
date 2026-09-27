@@ -41,7 +41,7 @@ export interface Question {
   explanation: string; // High-level doctrinal / exam board explanation
   difficulty: 'Fácil' | 'Médio' | 'Difícil' | 'Aleatório' | 'Medium' | 'Hard' | 'Extreme';
   examBoardRef: string;
-  styleCategory?: 'case_study' | 'direct' | 'mixed'; // Estudo de Caso vs. Questão Direta
+  styleCategory?: 'case_study' | 'direct' | 'jurisprudence' | 'mixed'; // Estudo de Caso vs. Questão Direta vs. Jurisprudência
   sourceLawRef?: string; // Artigo, parágrafo, capítulo ou seção de origem no resumo
   distractorTrapAnalysis?: string; // Análise técnica dos distratores e pegadinha da banca
   isRealExamQuestion?: boolean; // Questão real coletada na internet / prova oficial

@@ -2965,6 +2965,148 @@ const formatTrueFalseEnunciado = (
   return `Com relação a ${topic}, julgue o item a seguir:\n\n${firstCharUpper}`;
 };
 
+/**
+ * Rigor de Taxonomia (Metadados Exatos):
+ * A tag da disciplina deve derivar obrigatoriamente do diploma legal central da questão.
+ * - Questões sobre o Código Penal (DL 2.848/1940) DEVEM ser classificadas estritamente como 'Direito Penal'.
+ * - É PROIBIDO utilizar a tag 'Direito da Criança e do Adolescente' a menos que a questão exija conhecimento específico do ECA (Lei 8.069/90).
+ * - Não deduza disciplinas por aproximação temática.
+ */
+export const resolveExactSubjectTaxonomy = (
+  rawSubject?: string,
+  sourceLawRef?: string,
+  questionText?: string,
+  summaryTitle?: string
+): string => {
+  const combined = `${rawSubject || ''} ${sourceLawRef || ''} ${questionText || ''} ${summaryTitle || ''}`.toLowerCase();
+
+  // 1. Verificação estrita do Estatuto da Criança e do Adolescente (Lei 8.069/1990)
+  // Somente permite 'Direito da Criança e do Adolescente' se houver menção expressa à Lei 8.069 ou institutos exclusivos do ECA
+  const isExplicitEca =
+    /\b(?:8\.?069|8069\/90|8069\/1990|estatuto da crian[çc]a e do adolescente)\b/i.test(combined) ||
+    /\b(?:ato infracional|medida socioeducativa|medidas socioeducativas|conselho tutelar|fundo municipal dos direitos da crian[çc]a|acolhimento institucional|adotando\b.*?\beca\b)\b/i.test(combined);
+
+  // 2. Verificação estrita do Código Penal e Tipos Penais (DL 2.848/1940)
+  const isPenalCodeOrCrimes =
+    /\b(?:c[oó]digo penal|decreto-lei\s*(?:n[ºo]?\s*)?2\.?848|dl\s*2848|cp\b|artigo\s*(?:121|122|123|129|147|155|157|158|168|171|213|217-?a|218|288|312|313|316|317|319|327|333)\b|art\.\s*(?:121|122|123|129|147|155|157|158|168|171|213|217-?a|218|288|312|313|316|317|319|327|333)\b)/i.test(combined) ||
+    /\b(?:leg[ií]tima defesa|estado de necessidade|estrito cumprimento|culpabilidade|imputabilidade|crime tentado|crime consumado|tipicidade|dolo|culpa|coautoria|concurso de crimes|concurso de pessoas|prescri[çc][ãa]o penal|extin[çc][ãa]o da punibilidade|livramento condicional|penas privativas de liberdade|reclus[ãa]o|deten[çc][ãa]o|homic[ií]dio|furto|roubo|estelionato|estupro|peculato|concuss[ãa]o|corrup[çc][ãa]o passiva|prevarica[çc][ãa]o)\b/i.test(combined);
+
+  // Se o tema central é Código Penal e NÃO é expressamente Lei 8.069/90 (ECA), DEVE ser 'Direito Penal'
+  if (isPenalCodeOrCrimes && !isExplicitEca) {
+    return 'Direito Penal';
+  }
+
+  // Se o rawSubject veio com referência à criança/adolescente mas NÃO é ECA (por aproximação temática indevida)
+  if (rawSubject && /\b(?:crian[çc]a|adolescente|inf[âa]ncia)\b/i.test(rawSubject)) {
+    if (!isExplicitEca) {
+      if (isPenalCodeOrCrimes || /\b(?:crime|delito|pena|pris[ãa]o|tipifica)\b/i.test(combined)) {
+        return 'Direito Penal';
+      }
+      if (summaryTitle && !summaryTitle.toLowerCase().includes('8.069') && !summaryTitle.toLowerCase().includes('eca')) {
+        const cleanTitleSubj = summaryTitle.split(/[-–:]/)[0].trim();
+        if (cleanTitleSubj && cleanTitleSubj.length > 3 && !/\b(?:crian|adolesc)\b/i.test(cleanTitleSubj)) {
+          return cleanTitleSubj;
+        }
+      }
+      return 'Direito Penal';
+    }
+    return 'Direito da Criança e do Adolescente';
+  }
+
+  // 3. Demais diplomas centrais
+  // CF/88
+  if (/\b(?:constitui[çc][ãa]o\s+federal|cf\/88|cf\s*88|carta\s+magna|art\.\s*5[ºo]\s+da\s+cf|artigo\s*5[ºo]|direitos\s+fundamentais|rem[eé]dios\s+constitucionais|a[çc][ãa]o\s+direta\s+de\s+inconstitucionalidade|adi|adc|adpf)\b/i.test(combined)) {
+    return 'Direito Constitucional';
+  }
+
+  // Processo Penal (DL 3.689/1941)
+  if (/\b(?:c[oó]digo de processo penal|cpp\b|decreto-lei\s*(?:n[ºo]?\s*)?3\.?689|inqu[eé]rito policial|pris[ãa]o em flagrante|pris[ãa]o preventiva|pris[ãa]o tempor[aá]ria|tribunal do j[uú]ri|a[çc][ãa]o penal|habeas corpus)\b/i.test(combined)) {
+    return 'Direito Processual Penal';
+  }
+
+  // Direito Administrativo (Lei 8.112, Lei 14.133, Lei 8.429, Lei 9.784, etc.)
+  if (/\b(?:lei\s*8\.?112|lei\s*14\.?133|lei\s*8\.?666|lei\s*8\.?429|lei\s*9\.?784|servidor p[uú]blico federal|improbidade administrativa|licita[çc][ãa]o|atos administrativos|poderes administrativos|responsabilidade civil do estado)\b/i.test(combined)) {
+    return 'Direito Administrativo';
+  }
+
+  // Estatuto das Guardas Municipais (Lei 13.022/2014)
+  if (/\b(?:lei\s*13\.?022|13022|guarda municipal|guardas municipais)\b/i.test(combined)) {
+    return rawSubject && !rawSubject.toLowerCase().includes('crian') ? rawSubject : 'Legislação Específica';
+  }
+
+  // Direito Civil
+  if (/\b(?:c[oó]digo civil|lei\s*10\.?406|personalidade jur[ií]dica|neg[oó]cio jur[ií]dico|prescri[çc][ãa]o e decad[êe]ncia civil|posse e propriedade|usucapi[ãa]o)\b/i.test(combined)) {
+    return 'Direito Civil';
+  }
+
+  // Direito Processual Civil
+  if (/\b(?:c[oó]digo de processo civil|cpc\b|lei\s*13\.?105|peti[çc][ãa]o inicial|recurso especial|agravo de instrumento|tutela de urg[êe]ncia)\b/i.test(combined)) {
+    return 'Direito Processual Civil';
+  }
+
+  // Direito Tributário
+  if (/\b(?:c[oó]digo tribut[aá]rio|ctn\b|lei\s*5\.?172|cr[eé]dito tribut[aá]rio|lan[çc]amento tribut[aá]rio|impostos|taxas|contribui[çc][ãa]o de melhoria)\b/i.test(combined)) {
+    return 'Direito Tributário';
+  }
+
+  // Direito Previdenciário
+  if (/\b(?:lei\s*8\.?213|lei\s*8\.?212|benef[ií]cios da previd[êe]ncia|regime geral de previd[êe]ncia|inss)\b/i.test(combined)) {
+    return 'Direito Previdenciário';
+  }
+
+  // Direito do Trabalho
+  if (/\b(?:clt\b|consolida[çc][ãa]o das leis do trabalho|contrato de trabalho|fgts|aviso pr[eé]vio|jornada de trabalho)\b/i.test(combined)) {
+    return 'Direito do Trabalho';
+  }
+
+  // Retorno padrão do rawSubject se já especificado e limpo
+  if (rawSubject && rawSubject.trim().length > 0) {
+    const s = rawSubject.trim();
+    if (s.toLowerCase().includes('crian') || s.toLowerCase().includes('adolescente')) {
+      return isExplicitEca ? 'Direito da Criança e do Adolescente' : 'Direito Penal';
+    }
+    return s;
+  }
+
+  return 'Direito Constitucional';
+};
+
+/**
+ * Integridade de Saída Estruturada:
+ * Garante que cada alternativa seja completa, autocontida, com pontuação correta e sem truncamento abrupto.
+ */
+export const sanitizeStructuredOptionText = (rawText: string, fallback: string): string => {
+  if (!rawText || typeof rawText !== 'string') return fallback;
+  let text = rawText.trim();
+  if (text.length < 8 || /^alternativa\s+[a-e][\.\:\s]*$/i.test(text)) {
+    return fallback;
+  }
+  // Remove conectores órfãos no final se o texto tiver sido cortado
+  text = text.replace(/[\s,;:\-]+(?:de|que|e|ou|com|em|para|por|da|do|dos|das|no|na|nos|nas)\s*$/i, '');
+  text = text.replace(/[,\-;:–—]\s*$/, '');
+  text = text.replace(/\.{2,}\s*$/, '');
+  text = text.trim();
+  if (!/[.!?]$/.test(text)) {
+    text += '.';
+  }
+  if (text.length > 0) {
+    text = text.charAt(0).toUpperCase() + text.slice(1);
+  }
+  return text;
+};
+
+export const sanitizeStructuredQuestionText = (rawText: string, defaultTopic: string): string => {
+  if (!rawText || typeof rawText !== 'string') return `Acerca de ${defaultTopic}, assinale a afirmativa correta:`;
+  let text = rawText.trim();
+  text = text.replace(/[\s,;:\-]+(?:de|que|e|ou|com|em|para|por)\s*$/i, '');
+  text = text.replace(/\.{2,}\s*$/, '');
+  text = text.trim();
+  if (!/[.!?:]$/.test(text)) {
+    text += '.';
+  }
+  return text;
+};
+
 app.post('/api/generate-questions', async (req, res) => {
   const db = readDb();
   let questionCount = 5;
@@ -3249,6 +3391,9 @@ app.post('/api/generate-questions', async (req, res) => {
           zoneText.match(/Lei\s*(?:nº|n°)?\s*[\d\.]+/i);
         const lawRef = lawRefMatch ? lawRefMatch[0] : `${title}${displayTopic !== title ? ` - ${displayTopic}` : ''}`;
 
+        const synthTypologies: Array<'case_study' | 'direct' | 'jurisprudence'> = ['direct', 'case_study', 'jurisprudence'];
+        const assignedStyle = synthTypologies[idx % 3];
+
         if (isCebraspe) {
           const isItemTrue = idx % 2 === 0;
           let assertiva = representativeSentence;
@@ -3267,18 +3412,21 @@ app.post('/api/generate-questions', async (req, res) => {
             explanationText = `GABARITO: ERRADO. Conforme ${lawRef}, a regra não admite tal inversão: "${representativeSentence}".`;
           }
 
+          const resolvedSubj = resolveExactSubjectTaxonomy(subj, lawRef, assertiva, title);
+
           return {
             id: `q-synth-${Date.now()}-${matId}-${idx + 1}`,
             userId: db.users[0]?.id || 'usr-default-01',
             materialId: matId,
             sourceSummaryTitle: title,
-            subject: subj,
+            subject: resolvedSubj,
             type: 'true_false' as const,
             questionText: `Acerca dos preceitos e regras normativas de ${title}${displayTopic !== title ? ` (${displayTopic})` : ''}, julgue o item a seguir:\n\n${assertiva}`,
             correctAnswer: isItemTrue ? 'True' : 'False',
             explanation: explanationText,
             difficulty: diff || 'Difícil',
             examBoardRef: `Padrão ${examBoard || 'Cebraspe'} - Julgamento Tático`,
+            styleCategory: assignedStyle,
             sourceLawRef: lawRef,
             attempts: 0,
             correctAttempts: 0,
@@ -3322,26 +3470,36 @@ app.post('/api/generate-questions', async (req, res) => {
           let usedDistractorIdx = 0;
           const options = letters.map((letter) => {
             if (letter === correctLetter) {
-              return { id: letter, text: representativeSentence };
+              return {
+                id: letter,
+                text: sanitizeStructuredOptionText(representativeSentence, `Disposição em conformidade com ${displayTopic}.`),
+              };
             }
             const dText = distractorPool[usedDistractorIdx % distractorPool.length] || `Inaplicável aos preceitos de ${displayTopic}.`;
             usedDistractorIdx++;
-            return { id: letter, text: dText };
+            return {
+              id: letter,
+              text: sanitizeStructuredOptionText(dText, `Previsão normativa sujeita a regulamentação própria de ${displayTopic}.`),
+            };
           });
+
+          const questionPromptText = `Considerando as disposições e preceitos normativos de ${title}${displayTopic && displayTopic !== title ? `, no que concerne a ${displayTopic},` : ''} assinale a afirmativa correta:`;
+          const resolvedSubj = resolveExactSubjectTaxonomy(subj, lawRef, questionPromptText, title);
 
           return {
             id: `q-synth-${Date.now()}-${matId}-${idx + 1}`,
             userId: db.users[0]?.id || 'usr-default-01',
             materialId: matId,
             sourceSummaryTitle: title,
-            subject: subj,
+            subject: resolvedSubj,
             type: 'multiple_choice' as const,
-            questionText: `Considerando as disposições e preceitos normativos de ${title}${displayTopic && displayTopic !== title ? `, no que concerne a ${displayTopic},` : ''} assinale a afirmativa correta:`,
+            questionText: questionPromptText,
             options,
             correctAnswer: correctLetter,
             explanation: `GABARITO: [${correctLetter}]. Justificativa: De acordo com a disciplina legal de ${title} (${lawRef}): "${representativeSentence}". As demais alternativas contêm distratores que contrariam a norma.`,
             difficulty: diff || 'Difícil',
             examBoardRef: `Padrão ${examBoard || 'FGV'} - Análise de Conformidade Legal`,
+            styleCategory: assignedStyle,
             sourceLawRef: lawRef,
             attempts: 0,
             correctAttempts: 0,
@@ -3644,25 +3802,30 @@ Você deve simular com precisão cirúrgica o estilo, a linguagem e a malícia d
 - NENHUMA questão deste lote pode ser de Certo ou Errado (C/E é exclusivo da banca Cebraspe).`;
     }
 
-    // Question Style Directive (case_study, direct, mixed)
+    // Question Style Directive (case_study, direct, jurisprudence, mixed)
     let styleDirective = '';
     if (questionStyle === 'case_study') {
-      styleDirective = `⚖️ DIRETRIZ DE ESTILO MANDATÓRIA: EXCLUSIVAMENTE ESTUDOS DE CASO (NARRATIVAS HIPOTÉTICAS)
+      styleDirective = `⚖️ DIRETRIZ DE ESTILO MANDATÓRIA: EXCLUSIVAMENTE ESTUDOS DE CASO (SITUAÇÕES HIPOTÉTICAS PRÁTICAS)
 - TODAS as questões geradas DEVEM obrigatoriamente ser Estudos de Caso / Situações Hipotéticas Práticas.
-- Cada enunciado deve apresentar uma narrativa concreta e contextualizada (ex.: "Mévio, servidor público estável...", "A sociedade de economia mista Alfa...", "O fiscal de tributos João...", "Determinada autoridade administrativa..."), descrevendo uma conduta, um fato ou um procedimento.
+- Cada enunciado deve apresentar uma narrativa concreta e contextualizada (ex.: "Mévio, servidor público estável...", "A sociedade empresária Alfa...", "O fiscal de tributos João...", "Determinada autoridade administrativa..."), descrevendo uma conduta, um fato ou um procedimento.
 - A pergunta final deve exigir a subsunção da situação hipotética às normas, prazos, competências e exceções do resumo fornecido (ex.: "Diante do caso narrado e à luz do texto normativo, assinale a afirmativa correta:").
 - No campo "styleCategory", preencha obrigatoriamente "case_study".`;
     } else if (questionStyle === 'direct') {
-      styleDirective = `📜 DIRETRIZ DE ESTILO MANDATÓRIA: EXCLUSIVAMENTE QUESTÕES DIRETAS (LITERALIDADE E CONCEITOS)
+      styleDirective = `📜 DIRETRIZ DE ESTILO MANDATÓRIA: EXCLUSIVAMENTE QUESTÕES DIRETAS (LITERALIDADE E LEI SECA)
 - TODAS as questões geradas DEVEM obrigatoriamente ser Questões Diretas focadas em conceitos, literalidade estrita, prazos, competências privativas e exceções normativas expressas.
 - Enunciados objetivos que cobram a correta aplicação ou classificação da norma (ex.: "A respeito das competências privativas previstas na legislação de regência, assinale a alternativa correta:", "Nos termos do texto legal aplicável, o prazo estipulado para [...] é de:").
 - No campo "styleCategory", preencha obrigatoriamente "direct".`;
+    } else if (questionStyle === 'jurisprudence') {
+      styleDirective = `🏛️ DIRETRIZ DE ESTILO MANDATÓRIA: EXCLUSIVAMENTE JURISPRUDÊNCIA E SÚMULAS (STF E STJ)
+- TODAS as questões geradas DEVEM obrigatoriamente cobrar o entendimento jurisprudencial consolidado dos Tribunais Superiores (STF e STJ), súmulas vinculantes, repercussão geral ou teses repetitivas vigentes em 2026 aplicadas ao tema.
+- No campo "styleCategory", preencha obrigatoriamente "jurisprudence".`;
     } else {
-      styleDirective = `🎯 DIRETRIZ DE ESTILO MANDATÓRIA: VARIAÇÃO DE ESTILOS EQUILIBRADA (ESTUDOS DE CASO + QUESTÕES DIRETAS)
-- Distribua as questões alternando estrategicamente entre dois grandes estilos:
-  1. ESTUDOS DE CASO (Casos Hipotéticos Práticos): narrativas contextualizadas com situações fáticas envolvendo personagens ou órgãos, exigindo a subsunção prática do fato à lei e suas exceções.
-  2. QUESTÕES DIRETAS: focadas em literalidade, conceitos técnicos, prazos precisos, competências privativas vs. exclusivas e regras expressas.
-- Para cada questão, preencha no campo "styleCategory": "case_study" (para estudos de caso) ou "direct" (para questões diretas).`;
+      styleDirective = `🎯 REGRA DE VARIAÇÃO MANDATÓRIA DE TIPOLOGIA (ALTERNÂNCIA OBRIGATÓRIA):
+Você DEVE obrigatoriamente alternar a tipologia da cobrança entre as ${questionCount} questões deste lote, garantindo distribuição equilibrada entre as três vertentes:
+1. 'case_study' (Situação Hipotética / Estudo de Caso): narrativa fática contextualizada com situações do cotidiano (servidores, órgãos, cidadãos), exigindo a subsunção do fato à norma e exceções.
+2. 'direct' (Literalidade Estrita / Lei Seca): cobrança da letra da lei, prazos exatos, quóruns, competências privativas vs. exclusivas e exceções explícitas ('salvo', 'vedado', 'independe').
+3. 'jurisprudence' (Jurisprudência dos Tribunais Superiores): súmulas vinculantes, teses de repercussão geral do STF e recursos repetitivos do STJ atualizados até 2026.
+Para cada questão, preencha no campo "styleCategory" exatamente a tipologia adotada: "case_study", "direct" ou "jurisprudence".`;
     }
 
     const distractorDirective = `🚨 DIRETRIZ MANDATÓRIA PARA DISTRATORES E PEGADINHAS DE ALTO NÍVEL:
@@ -3903,25 +4066,57 @@ DIRETRIZ DE INÉDITO ABSOLUTO:
 ═══════════════════════════════════════════════════════════════════\n`
           : '';
 
+      // Cooldown de 15 questões: o mesmo tema ou dispositivo não pode ser repetido em um intervalo mínimo de 15 questões
+      const recent15Window = allKnownExistingTexts.slice(0, 15);
+      const cooldownRefsOnline = Array.from(
+        new Set(
+          recent15Window
+            .flatMap((t: string) => {
+              const m = t.match(/(?:Art(?:igo|\.)\s*\d+[ºo]?(?:\s*,\s*(?:inciso|parágrafo|§)\s*[\w\dº]+)?)/gi);
+              return m ? m.map((s) => s.trim()) : [];
+            })
+            .filter(Boolean)
+        )
+      );
+
+      const onlineCooldownDirective = (cooldownRefsOnline.length > 0 || recent15Window.length > 0)
+        ? `\n🚨 REGRA DE COOLDOWN TEMÁTICO E DISPOSITIVO (INTERVALO MÍNIMO DE 15 QUESTÕES):
+Dispositivos e enunciados das ÚLTIMAS 15 QUESTÕES sob COOLDOWN OBRIGATÓRIO:
+${cooldownRefsOnline.length > 0 ? `• Dispositivos sob Cooldown (PROIBIDO REPETIR): [${cooldownRefsOnline.slice(0, 20).join(', ')}]` : ''}
+${recent15Window.length > 0 ? `• Enunciados sob Cooldown:\n${recent15Window.slice(0, 6).map((s, idx) => `   ${idx + 1}. "${s.slice(0, 90)}..."`).join('\n')}` : ''}
+É TERMINANTEMENTE PROIBIDO selecionar ou trazer questões que versem sobre os artigos/temas sob cooldown acima! Explore outros tópicos e dispositivos da disciplina.\n`
+        : '';
+
       const extractionPrompt = `Você é um curador e examinador oficial de QUESTÕES REAIS DE CONCURSOS PÚBLICOS brasileiros.
 Sua missão é realizar uma busca ativa na web utilizando a ferramenta oficial de pesquisa do Google por questões autênticas aplicadas em concursos públicos reais entre 2018 e 2026 sobre:
 - Tema: "${cleanTitle}"
 - Disciplina / Matéria: "${subject}"
 - Banca Examinadora: "${targetBoard}" (varra portais como QConcursos, Gran Concursos, Estratégia Concursos, PCI Concursos, Jusbrasil ou provas de Tribunais, Ministérios Públicos, Polícias e Fisco).
 
+${onlineCooldownDirective}
 ${antiRepetitionDirective}
 
 QUANTIDADE EXATA NECESSÁRIA: ${count} questão(ões) autêntica(s) de provas reais de concurso.
 
 DIRETRIZES DA BUSCA REAL:
-1. ENUNCIADO COMPLETO E AUTÊNTICO: Traga o enunciado oficial na íntegra (caso prático complexo ou comando com assertiva completa).
-2. FORMATO POR BANCA:
-   - Se Banca Cebraspe com Certo/Errado: comando claro ("Acerca de ${cleanTitle}, julgue o item a seguir:") seguido da assertiva jurídica autônoma, "correctAnswer": "True" ou "False" e opções vazias [].
-   - Se FGV, FCC, VUNESP ou Múltipla Escolha: OBRIGATÓRIO conter exatamente 5 alternativas (A, B, C, D e E) completas com textos reais e proposições substantivas sobre ${cleanTitle}. NUNCA deixe o array de opções vazio e NUNCA use o termo genérico "Alternativa A/B/C/D/E".
-3. REFERÊNCIA DA PROVA REAL: Indique a prova onde a questão caiu no campo "examBoardRef" e "examOrigin" (ex: "${targetBoard} - TJ-SP - Analista Judiciário (2023)", "${targetBoard} - PRF - Policial", "${targetBoard} - TRF - Técnico").
-4. FONTE / URL: Preencha no campo "sourceUrl" o link da fonte encontrada ou página de questões (ex: QConcursos, Gran, Estratégia, PCI Concursos, Jusbrasil).
-5. RAIO-X DA PEGADINHA (distractorTrapAnalysis): Forneça a análise técnica das armadilhas inseridas nos distratores (troca de prazos, inversão de deve por pode, ressalvas como regras gerais).
-6. MARCAÇÃO REAL: Preencha "isRealExamQuestion": true.
+1. RIGOR DE TAXONOMIA (METADADOS EXATOS):
+   - A tag da disciplina ("subject") DEVE derivar obrigatoriamente do diploma legal central da questão:
+     • Questões sobre o Código Penal (DL 2.848/1940) DEVEM ser classificadas estritamente como 'Direito Penal'.
+     • É PROIBIDO utilizar a tag 'Direito da Criança e do Adolescente' a menos que a questão exija conhecimento específico do ECA (Lei 8.069/1990). NÃO deduza disciplinas por aproximação temática!
+     • Questões da CF/88: 'Direito Constitucional'; CPP: 'Direito Processual Penal'; Leis Administrativas: 'Direito Administrativo'.
+2. INTEGRIDADE DE SAÍDA ESTRUTURADA (PROIBIÇÃO TOTAL DE TEXTO CORTADO):
+   - Entregue o texto das alternativas (A a E) e dos enunciados de forma 100% COMPLETA, autocontida e encerrada com ponto final.
+   - O texto não pode ser cortado de forma abrupta!
+   - Para múltipla escolha, o array "options" DEVE conter exatamente 5 alternativas substanciais e completas.
+3. FILTRO DE VIGÊNCIA E ATUALIZAÇÃO NORMATIVA (2026):
+   - Traga EXCLUSIVAMENTE questões de concurso público que estejam 100% VIGENTES em 2026.
+   - Descarte sumariamente questões baseadas em normas revogadas, redações anteriores a reformas legislativas recentes (Pacote Anticrime, Lei 14.133, Lei 14.230 de Improbidade, Lei Henry Borel) ou teses/súmulas superadas do STF/STJ.
+4. VARIAÇÃO E TIPOLOGIA:
+   - Alterne a tipologia no campo "styleCategory": "case_study" (situação hipotética fática), "direct" (literalidade da lei seca) ou "jurisprudence" (jurisprudência consolidada / súmulas).
+5. REFERÊNCIA DA PROVA REAL: Indique a prova onde a questão caiu no campo "examBoardRef" e "examOrigin" (ex: "${targetBoard} - TJ-SP - Analista Judiciário (2023)", "${targetBoard} - PRF - Policial", "${targetBoard} - TRF - Técnico").
+6. FONTE / URL: Preencha no campo "sourceUrl" o link da fonte encontrada ou página de questões (ex: QConcursos, Gran, Estratégia, PCI Concursos, Jusbrasil).
+7. RAIO-X DA PEGADINHA (distractorTrapAnalysis): Forneça a análise técnica das armadilhas inseridas nos distratores (troca de prazos, inversão de deve por pode, ressalvas como regras gerais).
+8. MARCAÇÃO REAL: Preencha "isRealExamQuestion": true.
 
 Retorne EXCLUSIVAMENTE em formato JSON (bloco json) com a lista de objetos:
 \`\`\`json
@@ -3942,6 +4137,7 @@ Retorne EXCLUSIVAMENTE em formato JSON (bloco json) com a lista de objetos:
     "difficulty": "${difficulty || 'Difícil'}",
     "examBoardRef": "${targetBoard} - Concurso Público Oficial",
     "examOrigin": "${targetBoard} - Órgão - Cargo (Ano)",
+    "styleCategory": "case_study",
     "sourceLawRef": "Dispositivo legal cobrado",
     "distractorTrapAnalysis": "Raio-X da Pegadinha: Análise técnica dos distratores da banca examinadora...",
     "isRealExamQuestion": true,
@@ -4177,7 +4373,7 @@ Retorne EXCLUSIVAMENTE em formato JSON:
             const rawText = typeof rawItem === 'string' ? rawItem : (rawItem?.text || '');
             return {
               id: letter,
-              text: rawText.trim() || `Disposição normativa concernente aos preceitos de ${cleanTitle}.`,
+              text: sanitizeStructuredOptionText(rawText, `Disposição normativa concernente aos preceitos de ${cleanTitle}.`),
             };
           });
           const upper = safeAns.toUpperCase();
@@ -4193,21 +4389,37 @@ Retorne EXCLUSIVAMENTE em formato JSON:
             ? q.sourceUrl
             : foundSources[idx % (foundSources.length || 1)] || 'https://www.qconcursos.com';
 
+        const finalQuestionText = sanitizeStructuredQuestionText(cleanContent(q.questionText || ''), cleanTitle);
+        const finalSubj = resolveExactSubjectTaxonomy(q.subject || subject, q.sourceLawRef, finalQuestionText, topicTitle);
+
+        const rawStyle = String(q.styleCategory || '').toLowerCase();
+        let finalStyle: 'case_study' | 'direct' | 'jurisprudence' = 'case_study';
+        if (rawStyle.includes('jurisprudence') || rawStyle.includes('sumula') || rawStyle.includes('tribunal') || rawStyle.includes('stf') || rawStyle.includes('stj')) {
+          finalStyle = 'jurisprudence';
+        } else if (rawStyle.includes('direct') || rawStyle.includes('literal') || rawStyle.includes('lei seca')) {
+          finalStyle = 'direct';
+        } else if (rawStyle.includes('case') || rawStyle.includes('estudo') || rawStyle.includes('hipotet')) {
+          finalStyle = 'case_study';
+        } else {
+          const typologies: Array<'case_study' | 'direct' | 'jurisprudence'> = ['case_study', 'direct', 'jurisprudence'];
+          finalStyle = typologies[idx % 3];
+        }
+
         return {
           id: `qst-online-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
           userId: 'usr-default-01',
           materialId: materialId || 'mat-visualizer',
           sourceSummaryTitle: topicTitle || 'Resumo Tático',
-          subject: q.subject || subject,
+          subject: finalSubj,
           type: isTf ? 'true_false' : 'multiple_choice',
-          questionText: cleanContent(q.questionText || ''),
+          questionText: finalQuestionText,
           options: cleanOpts,
           correctAnswer: safeAns,
           explanation: cleanContent(q.explanation || 'Gabarito oficial de concurso fundamentado.'),
           difficulty: q.difficulty || difficulty || 'Difícil',
           examBoardRef: q.examBoardRef || `${targetBoard} - Prova Oficial`,
           examOrigin: q.examOrigin || q.examBoardRef || `${targetBoard} - Concurso Público`,
-          styleCategory: q.styleCategory || 'case_study',
+          styleCategory: finalStyle,
           sourceLawRef: q.sourceLawRef || cleanTitle,
           distractorTrapAnalysis: q.distractorTrapAnalysis || 'Pegadinha clássica de concurso da banca examinadora.',
           isRealExamQuestion: true,
@@ -4313,28 +4525,49 @@ ${activeSlices
 - No campo "sourceLawRef", indique com exatidão o artigo, parágrafo ou inciso cobrado (ex: "Art. 4º, caput", "Art. 7º, inciso VI", "Art. 12, § 3º", "Art. 14, § 7º", etc.).`;
       }
 
-      // Previously tested articles for this material to prevent cyclical repetitions
+      // Cooldown de 15 questões: o mesmo tema ou dispositivo não pode ser repetido em um intervalo mínimo de 15 questões
       const activeExisting = dynamicExistingContext || existingForContext;
-      const previousArticles = Array.from(
+      const recentCooldownWindow = activeExisting.slice(0, 15);
+
+      const cooldownArticles = Array.from(
+        new Set(
+          recentCooldownWindow
+            .flatMap((q: any) => {
+              const refs: string[] = [];
+              const r = q.sourceLawRef || q.ref || '';
+              if (r) refs.push(r.trim());
+              const t = q.text || q.questionText || '';
+              const m = t.match(/(?:Art(?:igo|\.)\s*\d+[ºo]?(?:\s*,\s*(?:inciso|parágrafo|§)\s*[\w\dº]+)?)/gi);
+              if (m) refs.push(...m.map((s: string) => s.trim()));
+              return refs;
+            })
+            .filter(Boolean)
+        )
+      );
+
+      const cooldownSnippets = recentCooldownWindow
+        .map((q: any) => (q.text || q.questionText || '').slice(0, 95))
+        .filter(Boolean);
+
+      const olderArticlesOutsideCooldown = Array.from(
         new Set(
           activeExisting
+            .slice(15)
             .map((q: any) => q.sourceLawRef || q.ref || '')
             .filter(Boolean)
             .map((ref: string) => ref.trim())
         )
       );
 
-      const previousSnippets = activeExisting
-        .map((q: any) => (q.text || q.questionText || '').slice(0, 90))
-        .filter(Boolean)
-        .slice(0, 20);
-
-      const antiRepetitionDirective = (previousArticles.length > 0 || previousSnippets.length > 0) && !isMultiMat
-        ? `\n🚨 BANCO DE DISPOSITIVOS E QUESTÕES JÁ TRABALHADAS (PROIBIDO REPETIR):
-${previousArticles.length > 0 ? `Artigos/dispositivos já cobrados: [${previousArticles.slice(0, 25).join(', ')}]` : ''}
-${previousSnippets.length > 0 ? `Enunciados já existentes:\n${previousSnippets.map((s, idx) => `  ${idx + 1}. "${s}..."`).join('\n')}` : ''}
-DIRETRIZ DE VARREDURA E EXPANSÃO DE EDITAL:
-O candidato já resolveu questões sobre os temas listados acima. É TERMINANTEMENTE PROIBIDO repetir a mesma abordagem, o mesmo artigo ou o mesmo foco conceitual! Priorize explorar os outros dispositivos e parágrafos da sua zona para cobrir 100% do edital.\n`
+      const cooldownAndTypologyDirective = !isMultiMat && (cooldownArticles.length > 0 || cooldownSnippets.length > 0)
+        ? `\n🚨 REGRA DE COOLDOWN TEMÁTICO E DISPOSITIVO (INTERVALO MÍNIMO DE 15 QUESTÕES):
+Os seguintes artigos/dispositivos e enunciados foram cobrados nas ÚLTIMAS 15 QUESTÕES do candidato e estão sob COOLDOWN RIGOROSO:
+${cooldownArticles.length > 0 ? `• Dispositivos sob Cooldown (PROIBIDO REPETIR NESTE LOTE): [${cooldownArticles.slice(0, 25).join(', ')}]` : ''}
+${cooldownSnippets.length > 0 ? `• Enunciados sob Cooldown:\n${cooldownSnippets.slice(0, 8).map((s, idx) => `   ${idx + 1}. "${s}..."`).join('\n')}` : ''}
+DIRETRIZ MANDATÓRIA DE COBERTURA E ESPAÇAMENTO:
+1. É TERMINANTEMENTE PROIBIDO gerar questões sobre qualquer um dos artigos ou dispositivos sob cooldown listados acima!
+2. Você DEVE obrigatoriamente explorar os DEMAIS artigos, parágrafos e incisos da sua Zona para garantir amplitude de edital.
+${olderArticlesOutsideCooldown.length > 0 ? `3. Artigos cobrados fora da janela de 15 questões [${olderArticlesOutsideCooldown.slice(0, 10).join(', ')}] podem ser revisitados, DESDE QUE você OBRIGATORIAMENTE alterne a tipologia da cobrança (ex: se antes foi literalidade, agora elabore caso hipotético ou jurisprudência).` : ''}\n`
         : '';
 
       const subjectSpecificDirective = isPortuguese
@@ -4365,7 +4598,7 @@ ${subjectSpecificDirective}
 ${difficultyDirective}
 
 ${chunkSegmentBindingDirective}
-${antiRepetitionDirective}
+${cooldownAndTypologyDirective}
 
 DIRETRIZES FUNDAMENTAIS:
 1. Redija todas as questões, alternativas e justificativas em português do Brasil formal de concurso público.
@@ -4374,7 +4607,23 @@ DIRETRIZES FUNDAMENTAIS:
    - BANCA CEBRASPE: Elabore assertivas autônomas e completas para julgamento de CERTO OU ERRADO ("type": "true_false", "options": [], "correctAnswer": "True" ou "False"). O enunciado DEVE conter comando contextualizado ("Acerca de [tema], julgue o item a seguir:") seguido de uma assertiva completa com sujeito explícito, predicado e substância jurídica. NUNCA gere comandos de múltipla escolha como "assinale a alternativa" nem fragmentos truncados.
    - DEMAIS BANCAS (FGV, FEPESE, VUNESP, FCC): Devem ser OBRIGATORIAMENTE de MÚLTIPLA ESCOLHA ("type": "multiple_choice") com 5 alternativas (A, B, C, D e E) completas no campo "options", com exatamente 1 alternativa correta e 4 distratores plausíveis. NUNCA use Certo/Errado para FGV, FEPESE, VUNESP ou FCC e NUNCA use termos genéricos como "Alternativa A".
 4. No campo 'explanation', detalhe a fundamentação do gabarito oficial com o dispositivo do resumo, explicando a razão da alternativa correta e o erro de cada distrator.
-5. No campo 'distractorTrapAnalysis', aponte a armadilha exata da banca examinadora (troca de prazo, inversão de regra/exceção, troca de competência).`;
+5. No campo 'distractorTrapAnalysis', aponte a armadilha exata da banca examinadora (troca de prazo, inversão de regra/exceção, troca de competência).
+6. RIGOR DE TAXONOMIA (METADADOS EXATOS):
+   - A tag da disciplina (campo "subject") DEVE derivar obrigatoriamente do diploma legal central da questão:
+     • Questões sobre o Código Penal (DL 2.848/1940) ou tipos penais DEVEM ser classificadas estritamente como 'Direito Penal'.
+     • É TERMINANTEMENTE PROIBIDO utilizar a tag 'Direito da Criança e do Adolescente' a menos que a questão exija conhecimento específico do Estatuto da Criança e do Adolescente - ECA (Lei 8.069/1990).
+     • NÃO deduza disciplinas por aproximação temática! Se um crime contra menor estiver tipificado no Código Penal (ex: Art. 121, Art. 217-A), a disciplina É ESTRITAMENTE 'Direito Penal'.
+     • Questões da CF/88: 'Direito Constitucional'; CPP: 'Direito Processual Penal'; Leis Administrativas: 'Direito Administrativo'.
+7. INTEGRIDADE DE SAÍDA ESTRUTURADA (PROIBIÇÃO TOTAL DE TEXTO CORTADO/TRUNCADO):
+   - Entregue o texto das alternativas (A a E) e dos enunciados de forma 100% COMPLETA, autocontida e respeitando a estrutura do JSON.
+   - É terminantemente proibido cortar frases no meio, deixar reticências soltas, terminar com vírgula ou conectores órfãos, ou truncar alternativas.
+   - Cada alternativa deve ser uma oração completa, bem desenvolvida e encerrada com ponto final ('.').
+8. VIGÊNCIA E ATUALIZAÇÃO NORMATIVA / JURISPRUDENCIAL (2026):
+   - Todas as questões e fundamentações DEVEM refletir rigorosamente o direito positivo brasileiro vigente em 2026.
+   - É proibido cobrar dispositivos revogados, redações anteriores a reformas legislativas (Pacote Anticrime, Lei 14.133, Lei 14.230 de Improbidade, Lei Henry Borel) ou súmulas/teses superadas do STF/STJ.
+9. REGRA DE ALTERNÂNCIA DE TIPOLOGIA DA COBRANÇA:
+   - Alterne obrigatoriamente a tipologia da cobrança entre as questões do lote: 'case_study' (situação hipotética), 'direct' (literalidade da lei seca) e 'jurisprudence' (jurisprudência consolidada/súmulas).
+   - Preencha no campo "styleCategory": "case_study", "direct" ou "jurisprudence".`;
 
       const prompt = `ATENÇÃO CRÍTICA DE COBERTURA INTEGRAL DO CONTEÚDO:
 O resumo de estudo fornecido possui múltiplas páginas e tópicos essenciais do início ao fim.
@@ -4399,7 +4648,7 @@ ${chunkFormattedSectionsText}`;
         },
         subject: {
           type: Type.STRING,
-          description: 'Matéria jurídica ou tema correspondente',
+          description: 'Disciplina estrita derivada do diploma legal central (ex: "Direito Penal" para Código Penal, "Direito Constitucional" para CF/88). PROIBIDO usar "Direito da Criança e do Adolescente" a menos que exija conhecimento específico da Lei 8.069/90 (ECA).',
         },
         documentZoneCovered: {
           type: Type.STRING,
@@ -4443,7 +4692,7 @@ ${chunkFormattedSectionsText}`;
         },
         styleCategory: {
           type: Type.STRING,
-          description: 'case_study ou direct',
+          description: 'case_study (estudo de caso / situação fática), direct (literalidade da lei seca) ou jurisprudence (jurisprudência / súmula)',
         },
         sourceLawRef: {
           type: Type.STRING,
@@ -4643,17 +4892,11 @@ ${chunkFormattedSectionsText}`;
               const letter = (['A', 'B', 'C', 'D', 'E'][optIdx]) as 'A' | 'B' | 'C' | 'D' | 'E';
               const rawItem = rawOptions[optIdx];
               const rawText = typeof rawItem === 'string' ? rawItem : (rawItem?.text || '');
-              if (rawText && rawText.trim().length > 3 && !rawText.toLowerCase().startsWith('alternativa ')) {
-                validOpts.push({
-                  id: letter,
-                  text: rawText.trim(),
-                });
-              } else {
-                validOpts.push({
-                  id: letter,
-                  text: contextualDistractors[optIdx] || `Previsão normativa sujeita a regulamentação própria da matéria.`,
-                });
-              }
+              const fallback = contextualDistractors[optIdx] || `Previsão normativa sujeita a regulamentação própria da matéria.`;
+              validOpts.push({
+                id: letter,
+                text: sanitizeStructuredOptionText(rawText, fallback),
+              });
             }
             cleanOptions = validOpts;
             const upper = rawAns.toUpperCase();
@@ -4707,9 +4950,26 @@ ${chunkFormattedSectionsText}`;
         }
 
         // Format True/False question text to always have context and solid Cebraspe formulation
-        let finalQuestionText = (q.questionText || '').trim();
+        let finalQuestionText = sanitizeStructuredQuestionText(cleanContent(q.questionText || ''), itemTitle);
         if (qType === 'true_false') {
           finalQuestionText = formatTrueFalseEnunciado(finalQuestionText, itemSubj, itemTitle, q.explanation);
+        }
+
+        // Rigor de Taxonomia: a tag da disciplina deve derivar estritamente do diploma legal central
+        itemSubj = resolveExactSubjectTaxonomy(itemSubj, q.sourceLawRef, finalQuestionText, itemTitle);
+
+        // Regra de Variação de Tipologia (alternância entre case_study, direct e jurisprudence)
+        const rawStyle = String(q.styleCategory || '').toLowerCase();
+        let finalStyle: 'case_study' | 'direct' | 'jurisprudence' = 'case_study';
+        if (rawStyle.includes('jurisprudence') || rawStyle.includes('sumula') || rawStyle.includes('tribunal') || rawStyle.includes('stf') || rawStyle.includes('stj')) {
+          finalStyle = 'jurisprudence';
+        } else if (rawStyle.includes('direct') || rawStyle.includes('literal') || rawStyle.includes('lei seca')) {
+          finalStyle = 'direct';
+        } else if (rawStyle.includes('case') || rawStyle.includes('estudo') || rawStyle.includes('hipotet')) {
+          finalStyle = 'case_study';
+        } else {
+          const typologies: Array<'case_study' | 'direct' | 'jurisprudence'> = ['case_study', 'direct', 'jurisprudence'];
+          finalStyle = typologies[i % 3];
         }
 
         return {
@@ -4727,11 +4987,9 @@ ${chunkFormattedSectionsText}`;
           examBoardRef: isTF
             ? (q.examBoardRef && q.examBoardRef.toUpperCase().includes('CEBRASPE') ? q.examBoardRef : 'Padrão Cebraspe - Julgamento de Assertiva')
             : (!isCebraspeSelected && !isMixedBoard
-                ? `Padrão ${boardKey} - ${q.styleCategory === 'case_study' ? 'Estudo de Caso' : 'Rigor Técnico'}`
+                ? `Padrão ${boardKey} - ${finalStyle === 'case_study' ? 'Estudo de Caso' : finalStyle === 'jurisprudence' ? 'Jurisprudência' : 'Literalidade'}`
                 : (q.examBoardRef || `Padrão ${boardKey || 'Misto'}`)),
-          styleCategory: (q.styleCategory === 'case_study' || q.styleCategory === 'direct')
-            ? q.styleCategory
-            : (finalQuestionText.length > 220 ? 'case_study' : 'direct'),
+          styleCategory: finalStyle,
           sourceLawRef: q.sourceLawRef || undefined,
           distractorTrapAnalysis: q.distractorTrapAnalysis || undefined,
           attempts: 0,
@@ -4755,7 +5013,7 @@ ${chunkFormattedSectionsText}`;
                 userId: db.users[0]?.id || 'usr-default-01',
                 materialId: mat.id,
                 sourceSummaryTitle: mat.title,
-                subject: mat.subject || q.subject,
+                subject: resolveExactSubjectTaxonomy(mat.subject || q.subject, q.sourceLawRef, q.questionText, mat.title),
                 questionText: q.type === 'true_false' ? formatTrueFalseEnunciado(q.questionText, mat.subject, mat.title) : q.questionText,
                 attempts: 0,
                 correctAttempts: 0,
@@ -4964,17 +5222,27 @@ ${chunkFormattedSectionsText}`;
         }
       }
 
+      if (Array.isArray(finalOptions)) {
+        finalOptions = finalOptions.map((opt: any) => ({
+          ...opt,
+          text: sanitizeStructuredOptionText(opt?.text || '', 'Opção em conformidade com as regras do edital.'),
+        }));
+      }
+
+      const exactSubj = resolveExactSubjectTaxonomy(subj || q.subject, q.sourceLawRef, sanitizedQuestionText, title);
+
       return {
         ...q,
         id: `q-curated-${Date.now()}-${matId}-${idx}`,
         userId: db.users[0]?.id || 'usr-default-01',
         materialId: matId,
         sourceSummaryTitle: title,
-        subject: subj,
+        subject: exactSubj,
         type: finalType,
         options: finalOptions,
         correctAnswer: finalCorrectAnswer,
         examBoardRef: finalBoardRef,
+        styleCategory: q.styleCategory || (sanitizedQuestionText.length > 200 ? 'case_study' : 'direct'),
         questionText: finalType === 'true_false' ? formatTrueFalseEnunciado(sanitizedQuestionText, subj, title) : sanitizedQuestionText,
         attempts: 0,
         correctAttempts: 0,

@@ -103,7 +103,7 @@ interface QuestionGeneratorViewProps {
     questionType: string;
     difficulty: string;
     examBoard?: string;
-    questionStyle?: 'case_study' | 'direct' | 'mixed';
+    questionStyle?: 'case_study' | 'direct' | 'jurisprudence' | 'mixed';
     searchOnline?: boolean;
     summaryText?: string;
     title?: string;
@@ -171,7 +171,7 @@ export const QuestionGeneratorView: React.FC<QuestionGeneratorViewProps> = ({
   const [genType, setGenType] = useState<string>('mixed'); // 'mixed' | 'multiple_choice' | 'true_false'
   const [genDifficulty, setGenDifficulty] = useState<string>('Difícil');
   const [genBoard, setGenBoard] = useState<string>('Misto'); // 'Misto' | 'FGV' | 'Cebraspe' | 'FCC' | 'FEPESE' | 'VUNESP'
-  const [genStyle, setGenStyle] = useState<'case_study' | 'direct' | 'mixed'>('mixed');
+  const [genStyle, setGenStyle] = useState<'case_study' | 'direct' | 'jurisprudence' | 'mixed'>('mixed');
   const [searchOnline, setSearchOnline] = useState<boolean>(false); // Mode: false = AI elaborator, true = search web for real exam questions
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
@@ -903,9 +903,10 @@ export const QuestionGeneratorView: React.FC<QuestionGeneratorViewProps> = ({
                       onChange={(e) => setGenStyle(e.target.value as any)}
                       className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white font-medium"
                     >
-                      <option value="mixed">🎯 Misto</option>
-                      <option value="case_study">⚖️ Estudo de Caso</option>
-                      <option value="direct">📜 Questão Direta</option>
+                      <option value="mixed">🎯 Misto (Alternância de Tipologia)</option>
+                      <option value="case_study">⚖️ Estudo de Caso (Situação Hipotética)</option>
+                      <option value="direct">📜 Questão Direta (Literalidade Estrita)</option>
+                      <option value="jurisprudence">🏛️ Jurisprudência / Súmulas</option>
                     </select>
                   </div>
 
@@ -1272,6 +1273,23 @@ const QuestionCardItem: React.FC<QuestionCardItemProps> = ({
           {q.sourceLawRef && (
             <span className="px-2 py-0.5 rounded-lg text-xs font-medium bg-sky-50 text-sky-700 border border-sky-200">
               {q.sourceLawRef}
+            </span>
+          )}
+          {q.styleCategory && (
+            <span
+              className={`px-2 py-0.5 rounded-lg text-xs font-medium border ${
+                q.styleCategory === 'case_study'
+                  ? 'bg-purple-50 text-purple-700 border-purple-200'
+                  : q.styleCategory === 'jurisprudence'
+                  ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                  : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+              }`}
+            >
+              {q.styleCategory === 'case_study'
+                ? '⚖️ Estudo de Caso'
+                : q.styleCategory === 'jurisprudence'
+                ? '🏛️ Jurisprudência'
+                : '📜 Literalidade'}
             </span>
           )}
           {(q.isRealExamQuestion || q.sourceUrl) && (
