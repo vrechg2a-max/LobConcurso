@@ -494,6 +494,9 @@ export const StudyMaterialView: React.FC<StudyMaterialViewProps> = ({
   const [questionCount, setQuestionCount] = useState<number>(5);
   const [questionDifficulty, setQuestionDifficulty] = useState<string>('Difícil');
   const [searchOnlineQuestions, setSearchOnlineQuestions] = useState<boolean>(false);
+  const [customSourceUrl, setCustomSourceUrl] = useState<string>(
+    'https://questoes.grancursosonline.com.br/aluno/filtro/concursos'
+  );
 
   // Repeating Group State for Generated Questions
   const [generatedQuestionsList, setGeneratedQuestionsList] = useState<Question[]>([]);
@@ -1521,6 +1524,7 @@ export const StudyMaterialView: React.FC<StudyMaterialViewProps> = ({
           questionType: 'multiple_choice',
           difficulty: questionDifficulty,
           searchOnline: searchOnlineQuestions,
+          customSourceUrl: searchOnlineQuestions ? customSourceUrl : undefined,
           materials: [
             {
               id: activeMaterialId || 'mat-visualizer',
@@ -2687,31 +2691,60 @@ export const StudyMaterialView: React.FC<StudyMaterialViewProps> = ({
             </div>
 
             {/* Generate Questions Button */}
-            <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl border transition-colors ${
-              searchOnlineQuestions ? 'bg-blue-50/60 border-blue-200' : 'bg-indigo-50/50 border-indigo-100'
+            <div className={`flex flex-col gap-3 p-4 rounded-xl border transition-colors ${
+              searchOnlineQuestions ? 'bg-blue-50/70 border-blue-200' : 'bg-indigo-50/50 border-indigo-100'
             }`}>
-              <div className="text-xs text-indigo-950">
-                <span className="font-semibold block">
-                  {searchOnlineQuestions ? '🌐 Modo: Pesquisa na Web de Questões Reais' : 'Fonte Ativa: Texto do Visualizador de Resumo'}
-                </span>
-                <span className="text-slate-600 text-[11px]">
-                  {searchOnlineQuestions
-                    ? 'O sistema usará o tema e as palavras-chave do resumo para pesquisar na internet questões autênticas aplicadas em concursos oficiais.'
-                    : visualizerText
-                    ? `Pronto para sintetizar itens de prova a partir de ${visualizerText.trim().split(/\s+/).length} palavras da esquematização.`
-                    : 'O visualizador está vazio no momento. Processe um PDF ou selecione um resumo salvo acima.'}
-                </span>
-              </div>
+              {searchOnlineQuestions && (
+                <div className="bg-white/90 p-3 rounded-lg border border-blue-200 space-y-2">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="text-xs font-bold text-blue-950 flex items-center gap-1.5">
+                      <Globe className="w-3.5 h-3.5 text-blue-600" />
+                      Fonte Prioritária: Gran Cursos Questões (com busca ampliada)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setCustomSourceUrl('https://questoes.grancursosonline.com.br/aluno/filtro/concursos')}
+                      className="text-[10px] font-semibold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                    >
+                      Restaurar link padrão
+                    </button>
+                  </div>
+                  <input
+                    type="url"
+                    value={customSourceUrl}
+                    onChange={(e) => setCustomSourceUrl(e.target.value)}
+                    placeholder="https://questoes.grancursosonline.com.br/aluno/filtro/concursos"
+                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="text-[10px] text-slate-500">
+                    Vasculha prioritariamente o banco do Gran Cursos Questões. Caso não localize questões suficientes deste tema na plataforma, amplia a pesquisa para outros bancos públicos (QConcursos, Tec Concursos, PCI) alternando bancas (Cebraspe, FGV, FCC, VUNESP, etc.).
+                  </p>
+                </div>
+              )}
 
-              <button
-                type="button"
-                id="btn-generate-questions-from-visualizer"
-                onClick={handleGenerateQuestionsFromVisualizer}
-                disabled={!visualizerText.trim() || isGeneratingQuestions}
-                className={`px-6 py-2.5 rounded-xl text-white text-xs font-bold inline-flex items-center justify-center gap-2 transition-colors disabled:opacity-40 shadow-xs shrink-0 cursor-pointer ${
-                  searchOnlineQuestions ? 'bg-blue-600 hover:bg-blue-700' : 'bg-indigo-600 hover:bg-indigo-700'
-                }`}
-              >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="text-xs text-indigo-950">
+                  <span className="font-semibold block">
+                    {searchOnlineQuestions ? '🌐 Modo: Pesquisa na Web de Questões Reais' : 'Fonte Ativa: Texto do Visualizador de Resumo'}
+                  </span>
+                  <span className="text-slate-600 text-[11px]">
+                    {searchOnlineQuestions
+                      ? 'O sistema usará o tema do resumo para pesquisar questões autênticas na internet, com prioridade no Gran Cursos Questões.'
+                      : visualizerText
+                      ? `Pronto para sintetizar itens de prova a partir de ${visualizerText.trim().split(/\s+/).length} palavras da esquematização.`
+                      : 'O visualizador está vazio no momento. Processe um PDF ou selecione um resumo salvo acima.'}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  id="btn-generate-questions-from-visualizer"
+                  onClick={handleGenerateQuestionsFromVisualizer}
+                  disabled={!visualizerText.trim() || isGeneratingQuestions}
+                  className={`px-6 py-2.5 rounded-xl text-white text-xs font-bold inline-flex items-center justify-center gap-2 transition-colors disabled:opacity-40 shadow-xs shrink-0 cursor-pointer ${
+                    searchOnlineQuestions ? 'bg-blue-600 hover:bg-blue-700' : 'bg-indigo-600 hover:bg-indigo-700'
+                  }`}
+                >
                 {searchOnlineQuestions ? (
                   <Globe className={`w-4 h-4 ${isGeneratingQuestions ? 'animate-spin' : ''}`} />
                 ) : (

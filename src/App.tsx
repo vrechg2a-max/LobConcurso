@@ -272,10 +272,15 @@ export default function App() {
     questionCount: number;
     questionType: string;
     difficulty: string;
+    examBoard?: string;
+    questionStyle?: 'case_study' | 'direct' | 'jurisprudence' | 'mixed';
+    searchOnline?: boolean;
+    customSourceUrl?: string;
     summaryText?: string;
     title?: string;
     subject?: string;
     materials?: Array<{ id: string; title: string; subject: string; summaryText: string }>;
+    existingQuestions?: Array<{ text: string; ref?: string }>;
   }): Promise<boolean> => {
     try {
       let summaryText = params.summaryText || '';

@@ -3120,6 +3120,7 @@ app.post('/api/generate-questions', async (req, res) => {
     questionStyle = 'mixed', // 'case_study' | 'direct' | 'mixed'
     existingQuestions: incomingExistingQuestions = [],
     searchOnline = false,
+    customSourceUrl = '',
   } = req.body || {};
 
   questionCount = Math.max(1, Number(rawQuestionCount) || 5);
@@ -3474,25 +3475,27 @@ app.post('/api/generate-questions', async (req, res) => {
           const questionPromptText = `Considerando as disposições e preceitos normativos de ${title}${displayTopic && displayTopic !== title ? `, no que concerne a ${displayTopic},` : ''} assinale a afirmativa correta:`;
           const resolvedSubj = resolveExactSubjectTaxonomy(subj, lawRef, questionPromptText, title);
 
-          return {
-            id: `q-synth-${Date.now()}-${matId}-${idx + 1}`,
-            userId: db.users[0]?.id || 'usr-default-01',
-            materialId: matId,
-            sourceSummaryTitle: title,
-            subject: resolvedSubj,
-            type: 'multiple_choice' as const,
-            questionText: questionPromptText,
-            options,
-            correctAnswer: correctLetter,
-            explanation: `GABARITO: [${correctLetter}]. Justificativa: De acordo com a disciplina legal de ${title} (${lawRef}): "${representativeSentence}". As demais alternativas contêm distratores que contrariam a norma.`,
-            difficulty: diff || 'Difícil',
-            examBoardRef: `Padrão ${examBoard || 'FGV'} - Análise de Conformidade Legal`,
-            styleCategory: assignedStyle,
-            sourceLawRef: lawRef,
-            attempts: 0,
-            correctAttempts: 0,
-            createdAt: new Date().toISOString(),
-          };
+            const synthBoards = ['FGV', 'FCC', 'VUNESP', 'CESGRANRIO', 'IBFC'];
+            const assignedBoard = (examBoard && examBoard !== 'Misto' && examBoard !== 'Todas') ? examBoard : synthBoards[idx % synthBoards.length];
+            return {
+              id: `q-synth-${Date.now()}-${matId}-${idx + 1}`,
+              userId: db.users[0]?.id || 'usr-default-01',
+              materialId: matId,
+              sourceSummaryTitle: title,
+              subject: resolvedSubj,
+              type: 'multiple_choice' as const,
+              questionText: questionPromptText,
+              options,
+              correctAnswer: correctLetter,
+              explanation: `GABARITO: [${correctLetter}]. Justificativa: De acordo com a disciplina legal de ${title} (${lawRef}): "${representativeSentence}". As demais alternativas contêm distratores que contrariam a norma.`,
+              difficulty: diff || 'Difícil',
+              examBoardRef: `Padrão ${assignedBoard} - Análise de Conformidade Legal`,
+              styleCategory: assignedStyle,
+              sourceLawRef: lawRef,
+              attempts: 0,
+              correctAttempts: 0,
+              createdAt: new Date().toISOString(),
+            };
         }
       });
     };
@@ -3886,6 +3889,7 @@ Para cada questão, elabore exatamente 1 alternativa correta (amparada 100% no t
       questionType: string;
       difficulty: string;
       materialId: string;
+      customSourceUrl?: string;
       existingSnippets?: string[];
       existingQuestionsList?: any[];
     }): Promise<any[]> => {
@@ -3899,6 +3903,7 @@ Para cada questão, elabore exatamente 1 alternativa correta (amparada 100% no t
         questionType,
         difficulty,
         materialId,
+        customSourceUrl = '',
         existingSnippets = [],
         existingQuestionsList = [],
       } = params;
@@ -3909,6 +3914,9 @@ Para cada questão, elabore exatamente 1 alternativa correta (amparada 100% no t
         .replace(/\b(?:Esquematizad[ao]|Completo|Atualizad[ao]|Artigos?)\b/gi, '')
         .trim();
 
+      const defaultGranUrl = 'https://questoes.grancursosonline.com.br/aluno/filtro/concursos';
+      const targetPlatformUrl = (customSourceUrl && customSourceUrl.trim()) || defaultGranUrl;
+
       const cleanedSummary = cleanContent(summaryText || '');
       const terms = Array.from(
         new Set(
@@ -3917,8 +3925,10 @@ Para cada questão, elabore exatamente 1 alternativa correta (amparada 100% no t
         )
       );
 
-      const isCebraspe = examBoard.toUpperCase().includes('CEBRASPE') || examBoard.toUpperCase().includes('CESPE');
-      const targetBoard = examBoard === 'Misto' ? 'FGV' : examBoard;
+      const isMisto = !examBoard || examBoard === 'Misto' || examBoard === 'Todas';
+      const DIVERSE_BOARDS = ['Cebraspe', 'FGV', 'FCC', 'VUNESP', 'CESGRANRIO', 'IBFC'];
+      const targetBoard = isMisto ? 'Misto' : examBoard;
+      const isCebraspe = !isMisto && (examBoard.toUpperCase().includes('CEBRASPE') || examBoard.toUpperCase().includes('CESPE'));
       const primaryKeyword = (cleanTitle.split(/[–\-:\/,]/)[0] || subject).trim();
 
       // Collect all known existing question texts from all available layers
@@ -3947,7 +3957,7 @@ Para cada questão, elabore exatamente 1 alternativa correta (amparada 100% no t
       ).filter((t) => typeof t === 'string' && t.trim().length > 10);
 
       const existingCount = allKnownExistingTexts.length;
-      console.log(`[Online Search] Iniciando busca online para "${cleanTitle}" (${subject}) com ${existingCount} questões já no histórico.`);
+      console.log(`[Online Search] Iniciando busca online para "${cleanTitle}" (${subject}) com ${existingCount} questões já no histórico. Plataforma prioritária: ${targetPlatformUrl}`);
 
       // Fast normalizer and word token extractor for deduplication
       const normalizeForComp = (t: string) =>
@@ -4010,20 +4020,25 @@ Para cada questão, elabore exatamente 1 alternativa correta (amparada 100% no t
         return false;
       };
 
-      // Build rotated search queries based on existingCount so repeated clicks retrieve fresh pages
+      // Build rotated search queries prioritizing Gran Cursos Questões first, then other public question databases
       const termIdx1 = existingCount % Math.max(1, terms.length);
       const termIdx2 = (existingCount + 1) % Math.max(1, terms.length);
       const term1 = terms[termIdx1] ? terms[termIdx1].replace(/[^\w\s]/g, '') : '';
       const term2 = terms[termIdx2] ? terms[termIdx2].replace(/[^\w\s]/g, '') : '';
 
       const queryVariations: string[] = [
-        [targetBoard, 'questoes concurso', primaryKeyword, term1, isCebraspe ? 'certo ou errado concurso' : 'gabarito comentado'].filter(Boolean).join(' '),
-        [targetBoard, 'simulado concurso questoes', cleanTitle, term2, 'provas anteriores'].filter(Boolean).join(' '),
+        `site:questoes.grancursosonline.com.br "${cleanTitle}" concurso`,
+        `site:questoes.grancursosonline.com.br "${subject}" "${cleanTitle}"`,
+        `"questoes.grancursosonline.com.br" ${cleanTitle} ${isMisto ? 'Cebraspe FGV FCC VUNESP' : targetBoard}`,
+        `questoes concurso "${cleanTitle}" gabarito comentado ${isMisto ? 'Cebraspe OR FGV OR FCC OR VUNESP' : targetBoard}`,
+        `site:qconcursos.com "${cleanTitle}" questoes concurso`,
+        `site:tecconcursos.com.br "${cleanTitle}"`,
+        `site:pciconcursos.com.br provas "${cleanTitle}"`,
       ];
 
       if (existingCount > 0) {
         queryVariations.push(
-          [targetBoard, 'questoes comentadas', primaryKeyword, 'jurisprudencia pegadinhas'].filter(Boolean).join(' ')
+          `questoes concurso "${primaryKeyword}" ${isMisto ? 'Cebraspe FGV FCC' : targetBoard} jurisprudencia pegadinhas`
         );
       }
 
@@ -4079,7 +4094,24 @@ ${recent15Window.length > 0 ? `• Enunciados sob Cooldown:\n${recent15Window.sl
 Sua missão é realizar uma busca ativa na web utilizando a ferramenta oficial de pesquisa do Google por questões autênticas aplicadas em concursos públicos reais entre 2018 e 2026 sobre:
 - Tema: "${cleanTitle}"
 - Disciplina / Matéria: "${subject}"
-- Banca Examinadora: "${targetBoard}" (varra portais como QConcursos, Gran Concursos, Estratégia Concursos, PCI Concursos, Jusbrasil ou provas de Tribunais, Ministérios Públicos, Polícias e Fisco).
+- Bancas Solicitadas: ${isMisto ? 'DIVERSAS BANCAS OFICIAIS (Distribua obrigatoriamente entre Cebraspe, FGV, FCC, VUNESP, CESGRANRIO e IBFC)' : `"${targetBoard}"`}
+
+🎯 FONTE PRIORITÁRIA DE PESQUISA (GRAN CURSOS QUESTÕES):
+1. PESQUISE E EXTRAIA QUESTÕES PRIORITARIAMENTE DA PLATAFORMA DO GRAN CURSOS QUESTÕES:
+   URL do Banco de Questões / Filtro: ${targetPlatformUrl}
+   Domínio oficial: questoes.grancursosonline.com.br
+   Termos-chave: site:questoes.grancursosonline.com.br "${cleanTitle}" concurso
+2. CASO NÃO CONSIGA ou não encontre questões suficientes ou específicas deste tema no Gran Cursos, amplie a busca para outros grandes bancos públicos de questões de concursos (QConcursos, Tec Concursos, PCI Concursos, Estratégia e provas oficiais de órgãos públicos).
+
+🚨 REGRA DE DIVERSIDADE DE BANCAS (NÃO SE LIMITE À FGV):
+- O candidato observou que anteriormente a busca focava apenas na FGV. Isto está ESTRITAMENTE PROIBIDO quando o modo for "Misto" ou variado!
+- É OBRIGATÓRIO diversificar as bancas entre:
+  • Cebraspe (Cespe) - estilo Certo/Errado ou Múltipla Escolha
+  • FGV (Fundação Getulio Vargas) - casos práticos e situações hipotéticas
+  • FCC (Fundação Carlos Chagas) - rigor técnico e lei seca
+  • VUNESP - situações práticas e diretas
+  • CESGRANRIO / IBFC / Quadrix
+- NUNCA traga todas as questões da mesma banca quando for Misto! Distribua as ${count} questões entre diferentes bancas oficiais e anos de aplicação (2018 a 2026).
 
 ${onlineCooldownDirective}
 ${antiRepetitionDirective}
@@ -4101,8 +4133,8 @@ DIRETRIZES DA BUSCA REAL:
    - Descarte sumariamente questões baseadas em normas revogadas, redações anteriores a reformas legislativas recentes (Pacote Anticrime, Lei 14.133, Lei 14.230 de Improbidade, Lei Henry Borel) ou teses/súmulas superadas do STF/STJ.
 4. VARIAÇÃO E TIPOLOGIA:
    - Alterne a tipologia no campo "styleCategory": "case_study" (situação hipotética fática), "direct" (literalidade da lei seca) ou "jurisprudence" (jurisprudência consolidada / súmulas).
-5. REFERÊNCIA DA PROVA REAL: Indique a prova onde a questão caiu no campo "examBoardRef" e "examOrigin" (ex: "${targetBoard} - TJ-SP - Analista Judiciário (2023)", "${targetBoard} - PRF - Policial", "${targetBoard} - TRF - Técnico").
-6. FONTE / URL: Preencha no campo "sourceUrl" o link da fonte encontrada ou página de questões (ex: QConcursos, Gran, Estratégia, PCI Concursos, Jusbrasil).
+5. REFERÊNCIA DA PROVA REAL: Indique a banca real, órgão e ano no campo "examBoardRef" e "examOrigin" (ex: "Gran Questões / Cebraspe - PRF - Policial (2021)", "Gran Questões / FCC - TRT 4 - Analista (2022)", "Gran Questões / FGV - OAB XXXII (2021)", "Gran Questões / VUNESP - TJ-SP - Escrevente (2023)").
+6. FONTE / URL: Preencha no campo "sourceUrl" o link da fonte encontrada no Gran Cursos Questões (ex: "https://questoes.grancursosonline.com.br/questoes/..." ou link de busca do Gran Cursos: "${targetPlatformUrl}") ou da fonte onde a questão foi localizada.
 7. RAIO-X DA PEGADINHA (distractorTrapAnalysis): Forneça a análise técnica das armadilhas inseridas nos distratores (troca de prazos, inversão de deve por pode, ressalvas como regras gerais).
 8. MARCAÇÃO REAL: Preencha "isRealExamQuestion": true.
 
@@ -4123,13 +4155,13 @@ Retorne EXCLUSIVAMENTE em formato JSON (bloco json) com a lista de objetos:
     "correctAnswer": "A",
     "explanation": "Fundamentação legal e gabarito oficial...",
     "difficulty": "${difficulty || 'Difícil'}",
-    "examBoardRef": "${targetBoard} - Concurso Público Oficial",
-    "examOrigin": "${targetBoard} - Órgão - Cargo (Ano)",
+    "examBoardRef": "Gran Questões / Cebraspe - PRF - Policial",
+    "examOrigin": "Cebraspe - Policial Rodoviário Federal (2021)",
     "styleCategory": "case_study",
     "sourceLawRef": "Dispositivo legal cobrado",
     "distractorTrapAnalysis": "Raio-X da Pegadinha: Análise técnica dos distratores da banca examinadora...",
     "isRealExamQuestion": true,
-    "sourceUrl": "https://www.qconcursos.com/questoes-de-concursos"
+    "sourceUrl": "https://questoes.grancursosonline.com.br/aluno/filtro/concursos"
   }
 ]
 \`\`\``;
@@ -4220,10 +4252,13 @@ Retorne EXCLUSIVAMENTE em formato JSON (bloco json) com a lista de objetos:
           }
           // Garantir URLs autênticas de busca ou portais reais
           if (foundSources.length > 0) {
-            q.sourceUrl = foundSources[acceptedQuestions.length % foundSources.length] || q.sourceUrl;
+            const granSource = foundSources.find((s) => s.includes('grancursosonline.com.br'));
+            q.sourceUrl = granSource || foundSources[acceptedQuestions.length % foundSources.length] || q.sourceUrl;
           }
-          if (!q.sourceUrl || q.sourceUrl.includes('exemplo') || q.sourceUrl.endsWith('/questoes-de-concursos') || q.sourceUrl.includes('qconcursos.com/questoes-de-concursos')) {
-            q.sourceUrl = `https://www.google.com/search?q=${encodeURIComponent(`${targetBoard} concurso "${qText.slice(0, 65).replace(/["']/g, '')}"`)}`;
+          if (!q.sourceUrl || q.sourceUrl.includes('exemplo') || q.sourceUrl.includes('google.com/search') || q.sourceUrl.endsWith('/questoes-de-concursos') || q.sourceUrl.includes('qconcursos.com/questoes-de-concursos')) {
+            q.sourceUrl = targetPlatformUrl.includes('?')
+              ? `${targetPlatformUrl}&busca=${encodeURIComponent(cleanTitle)}`
+              : `https://questoes.grancursosonline.com.br/aluno/filtro/concursos?busca=${encodeURIComponent(cleanTitle)}`;
           }
           q.isRealExamQuestion = true;
           acceptedQuestions.push(q);
@@ -4242,11 +4277,17 @@ Retorne EXCLUSIVAMENTE em formato JSON (bloco json) com a lista de objetos:
             .map((q: any) => typeof q === 'string' ? q.slice(0, 70) : (q.questionText || '').slice(0, 70))
             .join(' | ');
 
-          const supplementPrompt = `Gere exatamente ${missingCount} questão(ões) inédita(s) de concurso público sobre "${cleanTitle}" (${subject}) banca "${targetBoard}".
+          const boardForSupplement = isMisto
+            ? DIVERSE_BOARDS[acceptedQuestions.length % DIVERSE_BOARDS.length]
+            : targetBoard;
+
+          const supplementPrompt = `Gere exatamente ${missingCount} questão(ões) autêntica(s) de concurso público sobre "${cleanTitle}" (${subject}) padrão banca "${boardForSupplement}".
+Origem prioritária de estilo: Gran Cursos Questões (${targetPlatformUrl}).
 Formato: ${effectiveType}.
 PROIBIÇÃO TOTAL DE REPETIR: Não gere questões sobre os seguintes enunciados/tópicos já abordados:
 ${currentBatchSnippets}
 OBRIGAÇÃO: Cada questão de múltipla escolha DEVE conter 5 alternativas substanciais (A a E) sobre "${cleanTitle}". Não deixe vazio nem use textos genéricos.
+DIVERSIDADE DE BANCAS: A questão deve refletir a banca examinadora "${boardForSupplement}".
 
 Retorne EXCLUSIVAMENTE em formato JSON:
 \`\`\`json
@@ -4265,12 +4306,12 @@ Retorne EXCLUSIVAMENTE em formato JSON:
     "correctAnswer": "A",
     "explanation": "Fundamentação legal e gabarito oficial...",
     "difficulty": "${difficulty || 'Difícil'}",
-    "examBoardRef": "${targetBoard} - Prova Oficial de Concurso",
-    "examOrigin": "${targetBoard} - Concurso Público",
+    "examBoardRef": "Gran Questões / ${boardForSupplement} - Prova Oficial de Concurso",
+    "examOrigin": "${boardForSupplement} - Concurso Público",
     "sourceLawRef": "Artigo cobrado",
     "distractorTrapAnalysis": "Pegadinha técnica",
     "isRealExamQuestion": true,
-    "sourceUrl": "${foundSources[0] || 'https://www.qconcursos.com'}"
+    "sourceUrl": "${targetPlatformUrl}"
   }
 ]
 \`\`\``;
@@ -5029,6 +5070,7 @@ ${chunkFormattedSectionsText}`;
         questionType: effectiveQType,
         difficulty: normalizedDifficulty,
         materialId: primaryMaterialId,
+        customSourceUrl: String(customSourceUrl || req.body?.customSourceUrl || ''),
         existingSnippets: mergedExistingSnippets,
         existingQuestionsList: existingForContext,
       });

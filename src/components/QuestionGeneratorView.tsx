@@ -108,6 +108,7 @@ interface QuestionGeneratorViewProps {
     examBoard?: string;
     questionStyle?: 'case_study' | 'direct' | 'jurisprudence' | 'mixed';
     searchOnline?: boolean;
+    customSourceUrl?: string;
     summaryText?: string;
     title?: string;
     subject?: string;
@@ -191,6 +192,9 @@ export const QuestionGeneratorView: React.FC<QuestionGeneratorViewProps> = ({
   const [genBoard, setGenBoard] = useState<string>('Misto'); // 'Misto' | 'FGV' | 'Cebraspe' | 'FCC' | 'FEPESE' | 'VUNESP'
   const [genStyle, setGenStyle] = useState<'case_study' | 'direct' | 'jurisprudence' | 'mixed'>('mixed');
   const [searchOnline, setSearchOnline] = useState<boolean>(false); // Mode: false = AI elaborator, true = search web for real exam questions
+  const [customSourceUrl, setCustomSourceUrl] = useState<string>(
+    'https://questoes.grancursosonline.com.br/aluno/filtro/concursos'
+  );
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [generationSuccess, setGenerationSuccess] = useState<string | null>(null);
@@ -268,6 +272,7 @@ export const QuestionGeneratorView: React.FC<QuestionGeneratorViewProps> = ({
         examBoard: genBoard,
         questionStyle: genStyle,
         searchOnline,
+        customSourceUrl: searchOnline ? customSourceUrl : undefined,
         summaryText: isAll ? undefined : (targetMat?.summaryText || ''),
         title: isAll ? 'Simulado Geral' : (targetMat?.title || 'Resumo Tático'),
         subject: isAll ? 'Conhecimentos Jurídicos' : (targetMat?.subject || 'Direito'),
@@ -856,13 +861,61 @@ export const QuestionGeneratorView: React.FC<QuestionGeneratorViewProps> = ({
             </div>
 
             {searchOnline && (
-              <div className="p-3 bg-blue-100/70 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-start gap-2.5">
-                <Globe className="w-4 h-4 text-blue-700 mt-0.5 shrink-0" />
-                <div>
-                  <strong className="font-semibold block">Varredura Web de Questões Reais Ativa:</strong>
-                  <span>
-                    Ao selecionar um resumo abaixo, o sistema pesquisa na internet questões autênticas que já caíram em provas de concursos públicos oficiais (FGV, Cebraspe, FCC, Vunesp, etc.) sobre o tema, trazendo os enunciados reais, alternativas oficiais e referências da prova.
+              <div className="p-3.5 bg-blue-50/90 border border-blue-200 rounded-xl text-xs text-blue-900 space-y-2.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-blue-700 shrink-0" />
+                    <span className="font-bold text-blue-950 text-xs sm:text-sm">
+                      Fonte Prioritária: Gran Cursos Questões (com busca ampliada)
+                    </span>
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Banco Gran Cursos + Multibancas
                   </span>
+                </div>
+
+                <p className="text-slate-600 text-[11px] leading-relaxed">
+                  O sistema pesquisa prioritariamente na base do <strong>Gran Cursos Questões</strong> pelo link oficial ou filtro personalizado. Se o tema tiver poucas questões na plataforma, o motor expande a pesquisa para outros bancos públicos (QConcursos, Tec Concursos, PCI Concursos e órgãos oficiais), alternando entre as bancas <strong>Cebraspe, FGV, FCC, VUNESP, CESGRANRIO e IBFC</strong>.
+                </p>
+
+                <div className="bg-white/80 p-2.5 rounded-lg border border-blue-200 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-blue-950">
+                      Link / Filtro da Plataforma de Questões:
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCustomSourceUrl(
+                            'https://questoes.grancursosonline.com.br/aluno/filtro/concursos'
+                          )
+                        }
+                        className="text-[10px] font-semibold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                      >
+                        Restaurar padrão
+                      </button>
+                      <a
+                        href={customSourceUrl || 'https://questoes.grancursosonline.com.br/aluno/filtro/concursos'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-0.5"
+                      >
+                        <span>Testar Link</span>
+                        <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="url"
+                      value={customSourceUrl}
+                      onChange={(e) => setCustomSourceUrl(e.target.value)}
+                      placeholder="https://questoes.grancursosonline.com.br/aluno/filtro/concursos"
+                      className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
                 </div>
               </div>
             )}
@@ -927,12 +980,14 @@ export const QuestionGeneratorView: React.FC<QuestionGeneratorViewProps> = ({
                       }}
                       className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white font-semibold"
                     >
-                      <option value="Misto">🎯 Misto (Variar Bancas)</option>
+                      <option value="Misto">🎯 Misto (Variar: Cebraspe, FGV, FCC, VUNESP, CESGRANRIO)</option>
                       <option value="Cebraspe">Cebraspe (C/E - Julgamento)</option>
                       <option value="FGV">FGV (Múltipla Escolha - Casos Práticos)</option>
                       <option value="FCC">FCC (Múltipla Escolha - Rigor Técnico)</option>
-                      <option value="FEPESE">FEPESE (Múltipla Escolha - Lei Seca)</option>
                       <option value="VUNESP">VUNESP (Múltipla Escolha - Casos Diretos)</option>
+                      <option value="CESGRANRIO">CESGRANRIO (Múltipla Escolha)</option>
+                      <option value="IBFC">IBFC (Múltipla Escolha)</option>
+                      <option value="FEPESE">FEPESE (Múltipla Escolha - Lei Seca)</option>
                     </select>
                   </div>
 
@@ -1474,11 +1529,15 @@ const QuestionCardItem: React.FC<QuestionCardItemProps> = ({
               href={q.sourceUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-2 py-0.5 rounded-lg text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 inline-flex items-center gap-1 transition-colors cursor-pointer"
-              title="Abrir página original da questão na internet"
+              className={`px-2 py-0.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1 transition-colors cursor-pointer ${
+                q.sourceUrl.includes('grancursosonline.com.br')
+                  ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+              }`}
+              title={q.sourceUrl.includes('grancursosonline.com.br') ? 'Abrir no Gran Cursos Questões' : 'Abrir página original da questão na internet'}
             >
-              <span>Ver fonte</span>
-              <ExternalLink className="w-3 h-3 text-slate-500" />
+              <span>{q.sourceUrl.includes('grancursosonline.com.br') ? 'Gran Questões' : 'Ver fonte'}</span>
+              <ExternalLink className="w-3 h-3 text-current opacity-70" />
             </a>
           )}
         </div>
