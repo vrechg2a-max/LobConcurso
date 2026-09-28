@@ -862,6 +862,8 @@ export const StudyMaterialView: React.FC<StudyMaterialViewProps> = ({
 
     try {
       let uploadPayloadUrl = '';
+      let clientExtractedText = '';
+
       if (uploadedFile.fileBlob) {
         // Ephemeral base64 string only for the immediate API request body to Gemini
         uploadPayloadUrl = await new Promise<string>((resolve) => {
@@ -869,6 +871,16 @@ export const StudyMaterialView: React.FC<StudyMaterialViewProps> = ({
           reader.onloadend = () => resolve(reader.result as string);
           reader.readAsDataURL(uploadedFile.fileBlob!);
         });
+
+        // Fast browser-side extraction to assist server processing
+        try {
+          const clientResult = await extractPdfMetadataAndText(uploadedFile.fileBlob);
+          if (clientResult.text && clientResult.text.length > 30 && !isCorruptPdfSyntax(clientResult.text)) {
+            clientExtractedText = clientResult.text;
+          }
+        } catch (cErr) {
+          console.warn('[PDF Client Extraction]', cErr);
+        }
       } else {
         uploadPayloadUrl = uploadedFile.fileUrl;
       }
@@ -881,7 +893,7 @@ export const StudyMaterialView: React.FC<StudyMaterialViewProps> = ({
           body: JSON.stringify({
             fileUrl: uploadPayloadUrl,
             fileName: uploadedFile.fileName,
-            extractedText: importedText || visualizerText || '',
+            extractedText: clientExtractedText || importedText || '',
             summaryDensity,
           }),
         },
@@ -1996,7 +2008,7 @@ export const StudyMaterialView: React.FC<StudyMaterialViewProps> = ({
                               <button
                                 type="button"
                                 id="btn-resume-auto-process"
-                                onClick={handleAutoProcessUntilFinished}
+                                onClick={() => handleAutoProcessUntilFinished()}
                                 disabled={isProcessingPdf || isAutoProcessing}
                                 className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                                 title="Retomar o processamento automático contínuo em lotes de onde parou até concluir o PDF"

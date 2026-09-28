@@ -125,7 +125,18 @@ export async function extractPdfMetadataAndText(file: File | Blob): Promise<PdfE
       }
     }
 
-    const fullText = pageTexts.join('\n\n').trim();
+    let fullText = pageTexts.join('\n\n').trim();
+
+    // Clean citations and page dividers if present in the PDF text layer
+    fullText = fullText
+      .replace(/\[cite:\s*[\d,\s]+\]/gi, '')
+      .replace(/^[ \t]*---+[ \t]*\[?(?:P[ÁA]GINA|PAGE)\s+\d+(?:\s+(?:de|of)\s+\d+)?\]?[ \t]*---+[ \t]*$/gim, '')
+      .replace(/^[ \t]*\[(?:P[ÁA]GINA|PAGE)\s+\d+(?:\s+(?:de|of)\s+\d+)?\][ \t]*$/gim, '')
+      .replace(/^[ \t]*(?:P[ÁA]GINA|PAGE)\s+\d+\s+(?:de|of)\s+\d+[ \t]*$/gim, '')
+      .replace(/^[ \t]*[•·\*\-\–—\s]+$/gm, '')
+      .replace(/[ \t]+([.,;:!?)\]])/g, '$1')
+      .replace(/[ \t]{2,}/g, ' ')
+      .trim();
 
     if (fullText && fullText.length > 15 && !isCorruptPdfSyntax(fullText)) {
       return {

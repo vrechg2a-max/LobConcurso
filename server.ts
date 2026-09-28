@@ -1584,9 +1584,27 @@ async function generateContentWithRetryAndFallback(
           )}s, remaining budget: ${Math.round(remainingNow / 1000)}s)...`
         );
 
+        // Normalize contents defensively to ensure strict compliance with @google/genai specification:
+        // contents can be a string, Content[], or Content object with parts
+        let normalizedContents = requestParams.contents;
+        if (Array.isArray(normalizedContents)) {
+          // Detect if caller passed an array of Parts instead of an array of Contents
+          const isArrayOfParts = normalizedContents.some(
+            (item: any) => item && (item.inlineData || (item.text !== undefined && !item.parts && !item.role))
+          );
+          if (isArrayOfParts) {
+            normalizedContents = [
+              {
+                role: 'user',
+                parts: normalizedContents,
+              },
+            ];
+          }
+        }
+
         const callPromise = ai.models.generateContent({
           model,
-          contents: requestParams.contents,
+          contents: normalizedContents,
           config: modelConfig,
         });
 
@@ -1773,6 +1791,99 @@ DIRETRIZES FUNDAMENTAIS (RIGOR CONTRA PROLIXIDADE):
 });
 
 // -------------------------------------------------------------
+// SECURE ROBUST PDF TEXT EXTRACTION (NODE.JS ENVIRONMENT)
+// -------------------------------------------------------------
+async function extractTextFromPdfBuffer(pdfBuffer: Buffer): Promise<{ text: string; totalPages: number; title?: string }> {
+  let extractedText = '';
+  let totalPages = 1;
+  let docTitle = '';
+
+  try {
+    const pdfParseModule = await import('pdf-parse');
+    const PDFParserClass = pdfParseModule.PDFParse || (pdfParseModule as any).default?.PDFParse;
+
+    if (typeof PDFParserClass === 'function') {
+      try {
+        const parser = new PDFParserClass({ data: new Uint8Array(pdfBuffer) });
+        if (typeof parser.getText === 'function') {
+          const parsed = await parser.getText();
+          totalPages = parsed.total || (parsed.pages ? parsed.pages.length : 1);
+          extractedText = (parsed.text || '').replace(/-- \d+ of \d+ --/g, '').trim();
+          if (typeof parser.getInfo === 'function') {
+            try {
+              const info = await parser.getInfo();
+              const rawTitle = (info as any)?.info?.Title;
+              if (rawTitle) {
+                const t = String(rawTitle).trim();
+                if (t && !t.toLowerCase().includes('untitled')) {
+                  docTitle = t;
+                }
+              }
+            } catch {
+              // ignore metadata error
+            }
+          }
+          if (typeof parser.destroy === 'function') {
+            await parser.destroy();
+          }
+        }
+      } catch (classErr: any) {
+        console.warn('[PDF Extract] Class-based PDFParse note:', classErr?.message);
+      }
+    } else {
+      // Legacy functional pdf-parse export if present
+      const defaultExport = (pdfParseModule as any).default || pdfParseModule;
+      if (typeof defaultExport === 'function') {
+        try {
+          const parsed = await defaultExport(pdfBuffer);
+          totalPages = parsed.numpages || parsed.total || 1;
+          extractedText = (parsed.text || '').replace(/-- \d+ of \d+ --/g, '').trim();
+          if (parsed.info?.Title) {
+            const t = String(parsed.info.Title).trim();
+            if (t && !t.toLowerCase().includes('untitled')) {
+              docTitle = t;
+            }
+          }
+        } catch (fnErr: any) {
+          console.warn('[PDF Extract] Function-based pdf-parse note:', fnErr?.message);
+        }
+      }
+    }
+  } catch (err: any) {
+    console.warn('[PDF Extract] pdf-parse import issue:', err?.message);
+  }
+
+  // Fallback: If text extraction produced nothing or very little, attempt text stream regex extraction
+  if (!extractedText || extractedText.length < 50) {
+    try {
+      const rawPdfString = pdfBuffer.toString('latin1');
+      const textBlockRegex = /BT[\s\S]*?ET/g;
+      const matches = rawPdfString.match(textBlockRegex);
+      if (matches && matches.length > 0) {
+        const streamTexts: string[] = [];
+        for (const block of matches) {
+          const strMatches = block.match(/\(([^)]+)\)/g);
+          if (strMatches) {
+            const blockStr = strMatches.map((s) => s.slice(1, -1)).join(' ');
+            if (blockStr.trim().length > 3) {
+              streamTexts.push(blockStr);
+            }
+          }
+        }
+        const combined = streamTexts.join(' ').replace(/\\[nrtbf]/g, ' ').replace(/\s+/g, ' ').trim();
+        if (combined.length > 80) {
+          extractedText = combined;
+        }
+      }
+    } catch {
+      // stream fallback silent
+    }
+  }
+
+  return { text: extractedText, totalPages, title: docTitle || undefined };
+}
+
+// -------------------------------------------------------------
 // EXTRACT PDF TEXT (FOR READY-MADE SUMMARY IMPORT OR INSPECTION)
 // -------------------------------------------------------------
 app.post('/api/extract-pdf-text', async (req, res) => {
@@ -1788,59 +1899,12 @@ app.post('/api/extract-pdf-text', async (req, res) => {
     }
 
     const pdfBuffer = Buffer.from(base64Data, 'base64');
-    let extractedText = '';
-    let totalPages = 1;
     let docTitle = fileName ? fileName.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ') : '';
 
-    try {
-      const pdfParseModule = await import('pdf-parse');
-      const PDFParserClass = pdfParseModule.PDFParse || (pdfParseModule as any).default?.PDFParse || (pdfParseModule as any).default || pdfParseModule;
-      if (PDFParserClass) {
-        let parsedResult: any = null;
-        try {
-          if (typeof PDFParserClass === 'function') {
-            try {
-              const parser = new PDFParserClass({ data: pdfBuffer });
-              if (typeof parser.getText === 'function') {
-                const parsed = await parser.getText();
-                totalPages = parsed.total || (parsed.pages ? parsed.pages.length : 1);
-                extractedText = (parsed.text || '').replace(/-- \d+ of \d+ --/g, '').trim();
-                if (typeof parser.getInfo === 'function') {
-                  const info = await parser.getInfo();
-                  if (info && (info as any).info && (info as any).info.Title) {
-                    const t = (info as any).info.Title.trim();
-                    if (t && !t.toLowerCase().includes('untitled')) {
-                      docTitle = t;
-                    }
-                  }
-                }
-                if (typeof parser.destroy === 'function') {
-                  await parser.destroy();
-                }
-              } else {
-                parsedResult = await (PDFParserClass as any)(pdfBuffer);
-              }
-            } catch (instantiateErr) {
-              parsedResult = await (PDFParserClass as any)(pdfBuffer);
-            }
-          }
-        } catch (callErr: any) {
-          console.warn('PDF parser invocation attempt:', callErr?.message);
-        }
-
-        if (parsedResult) {
-          totalPages = parsedResult.numpages || parsedResult.total || 1;
-          extractedText = (parsedResult.text || '').replace(/-- \d+ of \d+ --/g, '').trim();
-          if (parsedResult.info?.Title) {
-            const t = String(parsedResult.info.Title).trim();
-            if (t && !t.toLowerCase().includes('untitled')) {
-              docTitle = t;
-            }
-          }
-        }
-      }
-    } catch (parseErr: any) {
-      console.warn('PDFParse local extraction warning:', parseErr?.message);
+    const { text: parsedText, totalPages, title: parsedTitle } = await extractTextFromPdfBuffer(pdfBuffer);
+    let extractedText = parsedText;
+    if (parsedTitle && !docTitle) {
+      docTitle = parsedTitle;
     }
 
     // If PDF was scanned or text is very short (< 30 characters), try Gemini transcription if API key is available
@@ -1894,6 +1958,18 @@ app.post('/api/extract-pdf-text', async (req, res) => {
     if (isCorrupt) {
       extractedText = '';
     }
+
+    // Clean citation tokens and page dividers
+    extractedText = extractedText
+      .replace(/\[cite:\s*[\d,\s]+\]/gi, '')
+      .replace(/\[citation\s+needed\]/gi, '')
+      .replace(/^[ \t]*---+[ \t]*\[?(?:P[ÁA]GINA|PAGE)\s+\d+(?:\s+(?:de|of)\s+\d+)?\]?[ \t]*---+[ \t]*$/gim, '')
+      .replace(/^[ \t]*\[(?:P[ÁA]GINA|PAGE)\s+\d+(?:\s+(?:de|of)\s+\d+)?\][ \t]*$/gim, '')
+      .replace(/^[ \t]*(?:P[ÁA]GINA|PAGE)\s+\d+\s+(?:de|of)\s+\d+[ \t]*$/gim, '')
+      .replace(/^[ \t]*[•·\*\-\–—\s]+$/gm, '')
+      .replace(/[ \t]+([.,;:!?)\]])/g, '$1')
+      .replace(/[ \t]{2,}/g, ' ')
+      .trim();
 
     if (!extractedText.trim()) {
       return res.status(422).json({
@@ -1972,30 +2048,11 @@ app.post('/api/process-pdf', async (req, res) => {
     // Extração robusta de texto do PDF caso não tenha sido enviado pelo cliente
     if (!fullDocText && base64Data) {
       try {
-        const pdfParseModule = await import('pdf-parse');
-        const PDFParserClass = pdfParseModule.PDFParse || (pdfParseModule as any).default?.PDFParse || (pdfParseModule as any).default || pdfParseModule;
-        if (PDFParserClass) {
-          const buf = Buffer.from(base64Data, 'base64');
-          let parsedResult: any = null;
-          if (typeof PDFParserClass === 'function') {
-            try {
-              const p = new PDFParserClass({ data: buf });
-              if (typeof p.getText === 'function') {
-                const res = await p.getText();
-                totalDocPages = res.total || (res.pages ? res.pages.length : 1);
-                fullDocText = (res.text || '').replace(/-- \d+ of \d+ --/g, '').trim();
-                if (typeof p.destroy === 'function') await p.destroy();
-              } else {
-                parsedResult = await (PDFParserClass as any)(buf);
-              }
-            } catch {
-              parsedResult = await (PDFParserClass as any)(buf);
-            }
-          }
-          if (parsedResult) {
-            totalDocPages = parsedResult.numpages || parsedResult.total || 1;
-            fullDocText = (parsedResult.text || '').replace(/-- \d+ of \d+ --/g, '').trim();
-          }
+        const buf = Buffer.from(base64Data, 'base64');
+        const extracted = await extractTextFromPdfBuffer(buf);
+        if (extracted.text) {
+          fullDocText = extracted.text;
+          totalDocPages = extracted.totalPages;
         }
       } catch (err: any) {
         console.warn('[process-pdf] Extração de texto em background falhou:', err?.message);
@@ -2357,7 +2414,12 @@ Retorne APENAS o código HTML válido e completo (com <!DOCTYPE html>, <html>, <
     const response = await generateContentWithRetryAndFallback(
       ai,
       {
-        contents: contentParts,
+        contents: [
+          {
+            role: 'user',
+            parts: contentParts,
+          },
+        ],
         config: {
           systemInstruction,
           temperature: 0.15,
@@ -2383,6 +2445,11 @@ Retorne APENAS o código HTML válido e completo (com <!DOCTYPE html>, <html>, <
     } else if (cleanGenerated.startsWith('```')) {
       cleanGenerated = cleanGenerated.replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
     }
+
+    // Clean citations and page dividers if present in generated content
+    cleanGenerated = cleanGenerated
+      .replace(/\[cite:\s*[\d,\s]+\]/gi, '')
+      .replace(/---+\s*\[?(?:P[ÁA]GINA|PAGE)\s+\d+(?:\s+(?:de|of)\s+\d+)?\]?\s*---+/gi, '');
 
     // Extract title & subject from HTML header-banner or <title> tags
     const h1Match = cleanGenerated.match(/<h1[^>]*>([^<]+)<\/h1>/i);
@@ -5051,7 +5118,7 @@ ${chunkFormattedSectionsText}`;
                 userId: db.users[0]?.id || 'usr-default-01',
                 materialId: mat.id,
                 sourceSummaryTitle: mat.title,
-                subject: resolveExactSubjectTaxonomy(mat.subject || q.subject, q.sourceLawRef, q.questionText, mat.title),
+                subject: resolveExactSubjectTaxonomy(mat.subject || q.subject, (q as any).sourceLawRef, q.questionText, mat.title),
                 questionText: q.type === 'true_false' ? formatTrueFalseEnunciado(q.questionText, mat.subject, mat.title) : q.questionText,
                 attempts: 0,
                 correctAttempts: 0,

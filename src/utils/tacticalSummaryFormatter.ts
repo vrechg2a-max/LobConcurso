@@ -311,9 +311,169 @@ export const STANDARD_TACTICAL_CSS = `
 `;
 
 /**
- * Regex para destacar palavras-chave decisivas em textos sem tags HTML
+ * Regex para destacar palavras-chave decisivas em textos de concurso
  */
-const KEYWORD_REGEX = /\b(NÃO|SALVO|EXCETO|RESSALVADOS?|VEDAD[OA]S?|É VEDAD[OA]|PROIBID[OA]|OBRIGATÓRI[OA]|OBRIGATORIAMENTE|SOLIDÁRI[OA]|SOLIDARIAMENTE|LIVRE ACESSO|PREFERENCIAL|PREFERENCIALMENTE|IMEDIATO|INDIVIDUALIZADO|PRIORIDADE ESPECIAL|SUPERPRIORIDADE|MAIORES DE 80|60 \(SESSENTA\) ANOS|80 \(OITENTA\) ANOS|RECLUSÃO|DETENÇÃO|INCONDICIONADA|SUBSTITUTO PROCESSUAL)\b/g;
+const KEYWORD_REGEX = /\b(NÃO|NÃO SE APLICA|ADMITE-SE|ATÍPICO|TODOS|NENHUM|SEMPRE|NUNCA|SALVO|EXCETO|RESSALVADOS?|VEDAD[OA]S?|É VEDAD[OA]|PROIBID[OA]|OBRIGATÓRI[OA]|OBRIGATORIAMENTE|SOLIDÁRI[OA]|SOLIDARIAMENTE|LIVRE ACESSO|PREFERENCIAL|PREFERENCIALMENTE|IMEDIATO|INDIVIDUALIZADO|PRIORIDADE ESPECIAL|SUPERPRIORIDADE|MAIORES DE 80|60 \(SESSENTA\) ANOS|80 \(OITENTA\) ANOS|RECLUSÃO|DETENÇÃO|INCONDICIONADA|CONDICIONADA|SUBSTITUTO PROCESSUAL|ESTADUAL|FEDERAL|PODE SER PUNIDA SOZINHA|TEORIA MENOR|PENA PRIVATIVA DE LIBERDADE|EXTINGUE-SE A PUNIBILIDADE|DESDE QUE|CUMULATIVOS?)\b/g;
+
+/**
+ * Sanitiza o texto extraído de resumos prontos em PDF:
+ * - Remove tags de citação de IA (ex: [cite: 43], [cite: 1, 2])
+ * - Remove marcadores de quebra de página (ex: --- [PÁGINA 1 de 15] ---)
+ * - Remove linhas de marcadores órfãos (ex: • solto em várias linhas)
+ * - Desfaz quebras de linha artificiais geradas pela largura de coluna do PDF
+ * - Normaliza espaçamentos e pontuações
+ */
+export function cleanReadyMadePdfSummary(rawText: string): string {
+  if (!rawText || typeof rawText !== 'string') return '';
+
+  let text = rawText
+    // Padroniza quebras de linha CRLF -> LF
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    // Remove tags de citação de IA (NotebookLM, Perplexity, Copilot, etc.)
+    .replace(/\[cite:\s*[\d,\s]+\]/gi, '')
+    .replace(/\[citation\s+needed\]/gi, '')
+    .replace(/\[fonte:\s*[^\]]+\]/gi, '')
+    // Remove marcadores de página de PDFs exportados
+    .replace(/^[ \t]*---+[ \t]*\[?(?:P[ÁA]GINA|PAGE)\s+\d+(?:\s+(?:de|of)\s+\d+)?\]?[ \t]*---+[ \t]*$/gim, '')
+    .replace(/^[ \t]*\[(?:P[ÁA]GINA|PAGE)\s+\d+(?:\s+(?:de|of)\s+\d+)?\][ \t]*$/gim, '')
+    .replace(/^[ \t]*(?:P[ÁA]GINA|PAGE)\s+\d+\s+(?:de|of)\s+\d+[ \t]*$/gim, '')
+    // Remove linhas com apenas marcadores de tópicos isolados ou ruídos
+    .replace(/^[ \t]*[•·\*\-\–—\s]+$/gm, '')
+    // Corrige espaços antes de pontuação gerados pela remoção das citações
+    .replace(/[ \t]+([.,;:!?)\]])/g, '$1')
+    // Normaliza múltiplos espaços consecutivos dentro de linhas
+    .replace(/[ \t]{2,}/g, ' ');
+
+  // Junção inteligente de quebras de linha cortadas pelo layout de coluna do PDF
+  const rawLines = text.split('\n');
+  const unwrappedLines: string[] = [];
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const cur = rawLines[i].trim();
+    if (!cur) {
+      if (unwrappedLines.length > 0 && unwrappedLines[unwrappedLines.length - 1] !== '') {
+        unwrappedLines.push('');
+      }
+      continue;
+    }
+
+    if (unwrappedLines.length > 0) {
+      const prev = unwrappedLines[unwrappedLines.length - 1];
+
+      // Verifica se a linha atual inicia uma nova estrutura formal
+      const curStartsNewItem =
+        /^[#•\-\*]/.test(cur) ||
+        /^\d+[\.\)]\s+/.test(cur) ||
+        /^(?:TÍTULO|TITULO|CAPÍTULO|CAPITULO|LIVRO|MÓDULO|MODULO|AULA|UNIDADE|PARTE GERAL|PARTE ESPECIAL|Art\.|Artigo|MAPA TÁTICO|ESQUEMATIZAÇÃO)\b/i.test(cur) ||
+        /^(?:REGRA|EXCEÇÃO|ALERTA|MNEMÔNICO|EXEMPLO|OBS|OBSERVAÇÃO|NOTA)\b/i.test(cur) ||
+        /^[A-ZÁÉÍÓÚÂÊÔÃÕÇ\w\s/()\-]{2,28}:\s+/.test(cur) || // e.g. "Bem Jurídico:", "Ação Penal:"
+        /^[A-ZÁÉÍÓÚÂÊÔÃÕÇ\s0-9()/-]{4,}:?$/.test(cur); // Linhas inteiras em maiúsculas (títulos de seção)
+
+      // Verifica se a linha anterior terminou no meio de uma oração
+      const prevEndsMidSentence =
+        prev.endsWith(',') ||
+        prev.endsWith(';') ||
+        prev.endsWith('-') ||
+        prev.endsWith('(') ||
+        /\b(?:de|do|da|dos|das|em|no|na|nos|nas|com|para|por|a|o|os|as|e|ou|que|se|não|ao|à|aos|às)\s*$/i.test(prev) ||
+        (!/[.:!?]$/.test(prev) && !curStartsNewItem);
+
+      if (prev && prevEndsMidSentence && !curStartsNewItem) {
+        if (prev.endsWith('-')) {
+          // Palavra hifenizada cortada (ex: pres- \n crição)
+          unwrappedLines[unwrappedLines.length - 1] = prev.slice(0, -1) + cur;
+        } else {
+          unwrappedLines[unwrappedLines.length - 1] = prev + ' ' + cur;
+        }
+        continue;
+      }
+    }
+
+    unwrappedLines.push(cur);
+  }
+
+  return unwrappedLines.join('\n').trim();
+}
+
+/**
+ * Extrai título e disciplina jurídica a partir das primeiras linhas do resumo
+ */
+export function extractMetadataFromText(
+  text: string,
+  fallbackFileName?: string
+): { title?: string; subject?: string } {
+  if (!text) return {};
+
+  let title: string | undefined;
+  let subject: string | undefined;
+
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+
+  for (let i = 0; i < Math.min(lines.length, 6); i++) {
+    const line = lines[i];
+
+    const mapMatch = line.match(/^(?:MAPA TÁTICO|ESQUEMATIZAÇÃO TÁTICA|RESUMO TÁTICO)\s*[-:]\s*(.+)$/i);
+    if (mapMatch && !title) {
+      title = mapMatch[1].trim();
+      continue;
+    }
+
+    const h1Match = line.match(/^#\s+(.+)$/);
+    if (h1Match && !title) {
+      title = h1Match[1].trim();
+      continue;
+    }
+
+    const lawMatch = line.match(/^(?:LEI\s+N[º°]?\s*[\d\.\/]+|CÓDIGO\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ]+|ESTATUTO\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ\s]+)/i);
+    if (lawMatch && !title) {
+      title = line;
+      continue;
+    }
+
+    if (title && !subject) {
+      const lower = line.toLowerCase();
+      if (lower.includes('ambiental') || lower.includes('meio ambiente')) {
+        subject = 'Direito Ambiental';
+      } else if (lower.includes('penal') || lower.includes('crimes')) {
+        subject = 'Direito Penal';
+      } else if (lower.includes('administrativ') || lower.includes('servidor')) {
+        subject = 'Direito Administrativo';
+      } else if (lower.includes('constitucion')) {
+        subject = 'Direito Constitucional';
+      } else if (lower.includes('criança') || lower.includes('adolescente') || lower.includes('eca')) {
+        subject = 'Direito da Criança e do Adolescente';
+      } else if (lower.includes('tributár')) {
+        subject = 'Direito Tributário';
+      } else if (lower.includes('trabalho')) {
+        subject = 'Direito do Trabalho';
+      } else if (lower.includes('portugu') || lower.includes('gramát')) {
+        subject = 'Língua Portuguesa';
+      }
+    }
+  }
+
+  if (!subject) {
+    const sample = text.slice(0, 4000).toLowerCase();
+    if (sample.includes('crimes ambientais') || sample.includes('lei 9.605') || sample.includes('ibama') || sample.includes('meio ambiente')) {
+      subject = 'Direito Ambiental';
+    } else if (sample.includes('criança e do adolescente') || sample.includes('lei 8.069') || sample.includes('conselho tutelar')) {
+      subject = 'Direito da Criança e do Adolescente';
+    } else if (sample.includes('crimes contra a administração') || sample.includes('código penal') || sample.includes('decreto-lei 2.848')) {
+      subject = 'Direito Penal';
+    } else if (sample.includes('lei 8.112') || sample.includes('servidor público') || sample.includes('regime disciplinar')) {
+      subject = 'Direito Administrativo';
+    } else if (sample.includes('crase') || sample.includes('regência') || sample.includes('concordância') || sample.includes('língua portuguesa')) {
+      subject = 'Língua Portuguesa';
+    }
+  }
+
+  if (!title && fallbackFileName) {
+    title = fallbackFileName.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+  }
+
+  return { title, subject };
+}
 
 /**
  * Converte texto simples ou fragmentos de resumo para o padrão HTML tático de referência
@@ -323,7 +483,7 @@ export function convertPlainTextToStandardTacticalHtml(
   title: string = 'Esquematização Tática da Legislação',
   subject: string = 'Direito'
 ): string {
-  // If the entire text contains raw PDF internal syntax (e.g. binary streams), never render garbage!
+  // Se o texto contém dados binários ou corrompidos de PDF, exibe mensagem explicativa
   if (isCorruptPdfSyntax(rawText)) {
     return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -351,7 +511,21 @@ ${STANDARD_TACTICAL_CSS}
 </html>`;
   }
 
-  const lines = rawText.split('\n');
+  // 1. Sanitiza texto removendo [cite: 43], marcadores de página, linhas de pontos órfãos e quebras de linha quebradas
+  const cleanText = cleanReadyMadePdfSummary(rawText);
+
+  // 2. Extrai metadados de título e disciplina caso os padrões genéricos tenham sido passados
+  const meta = extractMetadataFromText(cleanText);
+  let finalTitle = title;
+  if ((!finalTitle || finalTitle.includes('Esquematização Tática') || finalTitle.includes('Resumo Tático')) && meta.title) {
+    finalTitle = meta.title;
+  }
+  let finalSubject = subject;
+  if ((!finalSubject || finalSubject === 'Direito' || finalSubject === 'Direito Constitucional') && meta.subject) {
+    finalSubject = meta.subject;
+  }
+
+  const lines = cleanText.split('\n');
   const bodyContent: string[] = [];
 
   let currentCardLines: string[] = [];
@@ -365,11 +539,40 @@ ${STANDARD_TACTICAL_CSS}
       cardHtml += `  <div class="artigo-header">${currentCardHeader}</div>\n`;
     }
 
-    cardHtml += '  <ul class="artigo-list">\n';
-    currentCardLines.forEach(l => {
-      cardHtml += `    ${l}\n`;
+    let hasOpenUl = false;
+    currentCardLines.forEach((line) => {
+      const isLi = line.startsWith('<li');
+      const isBox =
+        line.startsWith('<div class="alert-box') ||
+        line.startsWith('<div class="mnemonic-box') ||
+        line.startsWith('<div class="exemplo-box') ||
+        line.startsWith('<div class="artigo-header');
+
+      if (isLi) {
+        if (!hasOpenUl) {
+          cardHtml += '  <ul class="artigo-list">\n';
+          hasOpenUl = true;
+        }
+        cardHtml += `    ${line}\n`;
+      } else if (isBox) {
+        if (hasOpenUl) {
+          cardHtml += '  </ul>\n';
+          hasOpenUl = false;
+        }
+        cardHtml += `  ${line}\n`;
+      } else {
+        if (hasOpenUl) {
+          cardHtml += '  </ul>\n';
+          hasOpenUl = false;
+        }
+        cardHtml += `  <p style="margin: 6px 0; font-size: 9.5pt; color: #2d3748; line-height: 1.5;">${line}</p>\n`;
+      }
     });
-    cardHtml += '  </ul>\n';
+
+    if (hasOpenUl) {
+      cardHtml += '  </ul>\n';
+    }
+
     cardHtml += '</div>\n';
 
     bodyContent.push(cardHtml);
@@ -383,62 +586,155 @@ ${STANDARD_TACTICAL_CSS}
 
     if (!trimmed) continue;
 
-    // 1. Header de Seção Principal / Módulo / Capítulo / H1 ou H2
-    if (
-      /^#{1,2}\s+/.test(trimmed) ||
-      /^(?:TÍTULO|TITULO|CAPÍTULO|CAPITULO|LIVRO|MÓDULO|MODULO|AULA|UNIDADE|PARTE GERAL|PARTE ESPECIAL)\b/i.test(trimmed) ||
-      /^TÍTULO\/CAPÍTULO/i.test(trimmed)
-    ) {
-      flushCard();
-      const cleanTitle = trimmed.replace(/^#+\s*/, '').replace(/\*\*/g, '').trim();
-      bodyContent.push(`<div class="section-title">${cleanTitle}</div>\n`);
+    // Se as primeiras linhas são o título do documento já aproveitado no banner, não repete em cartões soltos
+    if (i <= 2 && (
+      /^MAPA TÁTICO:\s*/i.test(trimmed) ||
+      /^ESQUEMATIZAÇÃO TÁTICA:\s*/i.test(trimmed) ||
+      trimmed.toLowerCase() === finalTitle.toLowerCase() ||
+      trimmed.toLowerCase().includes('esquematização tática')
+    )) {
       continue;
     }
 
-    // 2. Header de Tópico / Artigo / Card Tático / H3 ou H4 / Tópico Numerado
+    // 1. Header de Seção Principal (ex: "1. TEORIA GERAL E BEM JURÍDICO", "TÍTULO I", "# Módulo 2")
+    if (
+      /^#{1,2}\s+/.test(trimmed) ||
+      /^\d+\.\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ\s0-9()/-]{3,}$/.test(trimmed) ||
+      /^(?:TÍTULO|TITULO|CAPÍTULO|CAPITULO|LIVRO|MÓDULO|MODULO|AULA|UNIDADE|PARTE GERAL|PARTE ESPECIAL)\b/i.test(trimmed)
+    ) {
+      flushCard();
+      const cleanSection = trimmed.replace(/^#+\s*/, '').replace(/\*\*/g, '').trim();
+      bodyContent.push(`<div class="section-title">${cleanSection}</div>\n`);
+      continue;
+    }
+
+    // 2. Header de Tópico / Artigo / Card Tático / Subseção
     if (
       /^#{3,4}\s+/.test(trimmed) ||
       /^(?:Art\.|Artigo)\s*\d+/i.test(trimmed) ||
       /^(?:TÓPICO|TOPICO|ITEM|SUBTÓPICO|SUBTOPICO)\s*[\d\.\-]+/i.test(trimmed) ||
       /^\d+(?:\.\d+)+\s+[\w\s]{3,}/i.test(trimmed) ||
-      /^\d+\s*[-–)]\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ\s]{4,}/i.test(trimmed)
+      /^[A-ZÁÉÍÓÚÂÊÔÃÕÇ\s0-9()/-]{5,}:$/.test(trimmed) ||
+      /^(?:HIPÓTESES|REQUISITOS|COMPETÊNCIA|PRINCÍPIO)\b.*:$/i.test(trimmed)
     ) {
-      flushCard();
-      currentCardHeader = trimmed.replace(/^#+\s*/, '').replace(/\*\*/g, '').trim();
+      if (currentCardLines.length > 0) {
+        flushCard();
+      }
+      currentCardHeader = trimmed.replace(/^#+\s*/, '').replace(/\*\*/g, '').replace(/:$/, '').trim();
       continue;
     }
 
-    // Alerta
-    if (trimmed.startsWith('ALERTA -') || trimmed.startsWith('ALERTA:')) {
-      const match = trimmed.match(/^ALERTA\s*[-:]\s*(.+?):\s*(.+)$/i);
+    // Subtítulo temático isolado sem dois pontos (ex: "Princípio da Insignificância nos Crimes Ambientais")
+    if (
+      trimmed.length < 75 &&
+      !trimmed.endsWith('.') &&
+      !trimmed.endsWith(',') &&
+      !trimmed.endsWith(';') &&
+      /^[A-ZÁÉÍÓÚÂÊÔÃÕÇ]/.test(trimmed) &&
+      !trimmed.includes(':') &&
+      !/^(?:REGRA|EXCEÇÃO|ALERTA|MNEMÔNICO|EXEMPLO|OBS)/i.test(trimmed) &&
+      !/^[•\-\*]/.test(trimmed)
+    ) {
+      if (currentCardLines.length > 0) {
+        flushCard();
+      }
+      currentCardHeader = trimmed;
+      continue;
+    }
+
+    // 3. Exceções e Regras Críticas de Concurso
+    const exceptionMatch = trimmed.match(/^(EXCEÇÃO(?:\s+\d+|\s+DA\s+EXCEÇÃO)?)\s*[-:]\s*(.+)$/i);
+    if (exceptionMatch) {
+      const exLabel = exceptionMatch[1].toUpperCase();
+      const exBody = exceptionMatch[2].replace(KEYWORD_REGEX, '<span class="keyword">$1</span>');
+      const isSpecial = exLabel.includes('DA EXCEÇÃO');
+      const boxStyle = isSpecial
+        ? 'background-color: #f0f9ff; border-left: 5px solid #0284c7; color: #0369a1;'
+        : '';
+      const icon = isSpecial ? '💡' : '🚨';
+      currentCardLines.push(
+        `<div class="alert-box" style="${boxStyle}"><strong>${icon} ${exLabel}:</strong> ${exBody}</div>`
+      );
+      continue;
+    }
+
+    // 4. Alerta de Pegadinha
+    if (trimmed.startsWith('ALERTA -') || trimmed.startsWith('ALERTA:') || trimmed.startsWith('🚨')) {
+      const match = trimmed.match(/^(?:🚨\s*)?ALERTA\s*[-:]\s*(.+?):\s*(.+)$/i);
       const alertTitle = match ? match[1].trim() : 'Pegadinha Clássica de Banca';
-      const alertBody = match ? match[2].trim() : trimmed.replace(/^ALERTA\s*[-:]\s*/i, '');
-      
+      const alertBody = match ? match[2].trim() : trimmed.replace(/^(?:🚨\s*)?ALERTA\s*[-:]\s*/i, '');
       const formattedAlertBody = alertBody.replace(KEYWORD_REGEX, '<span class="keyword">$1</span>');
-      const alertHtml = `  <div class="alert-box"><strong>🚨 ALERTA - ${alertTitle}:</strong> ${formattedAlertBody}</div>`;
-      currentCardLines.push(alertHtml);
+      currentCardLines.push(
+        `<div class="alert-box"><strong>🚨 ALERTA - ${alertTitle}:</strong> ${formattedAlertBody}</div>`
+      );
       continue;
     }
 
-    // Mnemônico
-    if (trimmed.startsWith('MNEMÔNICO -') || trimmed.startsWith('MNEMONICO -') || trimmed.startsWith('MNEMÔNICO:') || trimmed.startsWith('MNEMONICO:')) {
-      const match = trimmed.match(/^MNEM[ÔO]NICO\s*[-:]\s*(.+?):\s*(.+)$/i);
+    // 5. Observação
+    const obsMatch = trimmed.match(/^\(?\s*(?:OBS|OBSERVAÇÃO|NOTA)\s*[-:]\s*(.+?)\)?$/i);
+    if (obsMatch) {
+      const obsBody = obsMatch[1].replace(KEYWORD_REGEX, '<span class="keyword">$1</span>');
+      currentCardLines.push(
+        `<div class="alert-box" style="margin: 8px 0; background-color: #fffbeb;"><strong>⚠️ OBSERVAÇÃO:</strong> ${obsBody}</div>`
+      );
+      continue;
+    }
+
+    // 6. Mnemônico
+    if (trimmed.startsWith('MNEMÔNICO') || trimmed.startsWith('MNEMONICO') || trimmed.startsWith('🧠')) {
+      const match = trimmed.match(/^(?:🧠\s*)?MNEM[ÔO]NICO\s*[-:]\s*(.+?):\s*(.+)$/i);
       const mKey = match ? match[1].trim() : 'TÁTICO';
-      const mBody = match ? match[2].trim() : trimmed.replace(/^MNEM[ÔO]NICO\s*[-:]\s*/i, '');
-      const mnemonicHtml = `  <div class="mnemonic-box"><strong>🧠 MNEMÔNICO (${mKey}):</strong> ${mBody}</div>`;
-      currentCardLines.push(mnemonicHtml);
+      const mBody = match ? match[2].trim() : trimmed.replace(/^(?:🧠\s*)?MNEM[ÔO]NICO\s*[-:]\s*/i, '');
+      currentCardLines.push(
+        `<div class="mnemonic-box"><strong>🧠 MNEMÔNICO (${mKey}):</strong> ${mBody}</div>`
+      );
       continue;
     }
 
-    // Exemplo Prático (Português / Doutrina)
+    // 7. Exemplo Prático (Português / Doutrina)
     if (trimmed.startsWith('EXEMPLO') || trimmed.startsWith('💡 EXEMPLO')) {
-      const exBody = trimmed.replace(/^(?:💡\s*)?EXEMPLO\s*[-:]\s*/i, '');
-      const exHtml = `  <div class="exemplo-box"><strong>💡 EXEMPLO PRÁTICO:</strong> ${exBody}</div>`;
-      currentCardLines.push(exHtml);
+      const exBody = trimmed.replace(/^(?:💡\s*)?EXEMPLO(?:\s+PRÁTICO)?\s*[-:]\s*/i, '');
+      currentCardLines.push(
+        `<div class="exemplo-box"><strong>💡 EXEMPLO PRÁTICO:</strong> ${exBody}</div>`
+      );
       continue;
     }
 
-    // Tópicos com marcadores
+    // 8. Tópicos Numerados de Jurisprudência ou Sistemática (ex: "1. Teoria da Dupla Imputação AFASTADA: ...")
+    const numSubMatch = trimmed.match(/^(\d+)\.\s+([^:]+):\s+(.+)$/);
+    if (numSubMatch) {
+      const num = numSubMatch[1];
+      const itemTitle = numSubMatch[2].trim();
+      const itemContent = numSubMatch[3].replace(KEYWORD_REGEX, '<span class="keyword">$1</span>');
+      currentCardLines.push(
+        `<li class="callout-point">👉 <strong>${num}. ${itemTitle}:</strong> ${itemContent}</li>`
+      );
+      continue;
+    }
+
+    // 9. Regra ou Definição Geral (ex: "REGRA (STF/STJ): ADMITE-SE ...")
+    const ruleMatch = trimmed.match(/^(REGRA(?:\s*\([^)]+\))?)\s*[-:]\s*(.+)$/i);
+    if (ruleMatch) {
+      const ruleLabel = ruleMatch[1].trim();
+      const ruleBody = ruleMatch[2].replace(KEYWORD_REGEX, '<span class="keyword">$1</span>');
+      currentCardLines.push(
+        `<li><strong>${ruleLabel}:</strong> ${ruleBody}</li>`
+      );
+      continue;
+    }
+
+    // 10. Chave-Valor tático (ex: "Bem Jurídico: Meio ambiente...", "Ação Penal: TODOS...", "Regra Geral: Justiça ESTADUAL")
+    const kvMatch = trimmed.match(/^([A-ZÁÉÍÓÚÂÊÔÃÕÇ][\w\s/()\-]{1,30}):\s+(.+)$/);
+    if (kvMatch && !trimmed.startsWith('http')) {
+      const key = kvMatch[1].trim();
+      const val = kvMatch[2].replace(KEYWORD_REGEX, '<span class="keyword">$1</span>');
+      currentCardLines.push(
+        `<li><strong>${key}:</strong> ${val}</li>`
+      );
+      continue;
+    }
+
+    // 11. Itens e marcadores de tópicos normais
     let formattedLine = trimmed
       .replace(/^[•\-\*]\s*/, '')
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
@@ -457,7 +753,7 @@ ${STANDARD_TACTICAL_CSS}
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>${title}</title>
+<title>${finalTitle}</title>
 <style>
 ${STANDARD_TACTICAL_CSS}
 </style>
@@ -465,8 +761,8 @@ ${STANDARD_TACTICAL_CSS}
 <body>
 <div class="document-container">
   <div class="header-banner">
-    <h1 class="banner-title">${title.toUpperCase()}</h1>
-    <p class="banner-subtitle">${subject} • Esquematização Tática - Padrão Concursos (Cebraspe • FGV • FCC)</p>
+    <h1 class="banner-title">${finalTitle.toUpperCase()}</h1>
+    <p class="banner-subtitle">${finalSubject} • Esquematização Tática - Padrão Concursos (Cebraspe • FGV • FCC)</p>
   </div>
 
   ${bodyContent.join('\n')}
@@ -495,6 +791,12 @@ export function ensureStandardTacticalHtml(
   if (isCompleteHtml) {
     let output = trimmed;
 
+    // Remove citações residuais [cite: 43] e marcadores de página do HTML
+    output = output
+      .replace(/\[cite:\s*[\d,\s]+\]/gi, '')
+      .replace(/---+\s*\[?(?:P[ÁA]GINA|PAGE)\s+\d+(?:\s+(?:de|of)\s+\d+)?\]?\s*---+/gi, '')
+      .replace(/<li>\s*[•·\*\-\–—\s]*<\/li>/gi, '');
+
     // Se possui <style>, garante que os estilos padrão estejam presentes
     if (output.includes('<style>')) {
       output = output.replace(
@@ -512,7 +814,6 @@ export function ensureStandardTacticalHtml(
     output = output.replace(
       /<div class=["']header-banner["'][^>]*>([\s\S]*?)<\/div>/i,
       (match, inner) => {
-        // Se já contém banner-title, mantém
         if (inner.includes('banner-title')) {
           return match;
         }
@@ -528,7 +829,10 @@ export function ensureStandardTacticalHtml(
 
   // Se são blocos HTML parciais (<div class="artigo-box">...), envelopa com documento completo
   if (/<div class=["'](?:artigo-box|section-title|header-banner|caput)/i.test(trimmed)) {
-    let innerContent = trimmed;
+    let innerContent = trimmed
+      .replace(/\[cite:\s*[\d,\s]+\]/gi, '')
+      .replace(/---+\s*\[?(?:P[ÁA]GINA|PAGE)\s+\d+(?:\s+(?:de|of)\s+\d+)?\]?\s*---+/gi, '')
+      .replace(/<li>\s*[•·\*\-\–—\s]*<\/li>/gi, '');
 
     let hasBanner = /<div class=["']header-banner["']/i.test(innerContent);
     const bannerHtml = hasBanner
@@ -556,6 +860,6 @@ ${innerContent}
 </html>`;
   }
 
-  // Caso seja texto puro / markdown legado, converte usando a função especializada
+  // Caso seja texto puro / markdown legado ou resumo pronto extraído de PDF, converte usando a função especializada
   return convertPlainTextToStandardTacticalHtml(trimmed, cleanTitle, cleanSubject);
 }
