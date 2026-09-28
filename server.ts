@@ -1931,12 +1931,14 @@ app.post('/api/process-pdf', async (req, res) => {
       manualLastArticle = null,
       lastProcessedTopic = null,
       extractedText: incomingExtractedText = '',
+      summaryDensity = 'exhaustive',
     } = req.body;
 
     let base64Data = '';
     let currentToken = typeof fileToken === 'string' && fileToken.trim() ? fileToken.trim() : '';
     let cleanFileName = fileName || 'Documento_Normativo_Concurso.pdf';
     let fullDocText = (typeof incomingExtractedText === 'string' ? incomingExtractedText.trim() : '');
+    let totalDocPages = 1;
 
     if (currentToken && pdfBase64Cache.has(currentToken)) {
       const cached = pdfBase64Cache.get(currentToken)!;
@@ -1947,6 +1949,9 @@ app.post('/api/process-pdf', async (req, res) => {
       if (!fileName && cached.cleanFileName) {
         cleanFileName = cached.cleanFileName;
       }
+      if ((cached as any).totalPages) {
+        totalDocPages = (cached as any).totalPages;
+      }
     } else if (fileUrl) {
       base64Data = fileUrl.includes('base64,') ? fileUrl.split('base64,')[1] : fileUrl;
       currentToken = currentToken || `pdf_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
@@ -1956,32 +1961,40 @@ app.post('/api/process-pdf', async (req, res) => {
         cleanFileName,
         cachedAt: Date.now(),
         extractedText: fullDocText || undefined,
-      });
+        totalPages: totalDocPages,
+      } as any);
     } else if (!fullDocText) {
       return res.status(400).json({
         error: 'Os dados do arquivo PDF não foram fornecidos ou a sessão temporária expirou. Por favor, anexe o arquivo novamente.',
       });
     }
 
-    // If text was not passed from client, attempt instant server extraction from base64
+    // Extração robusta de texto do PDF caso não tenha sido enviado pelo cliente
     if (!fullDocText && base64Data) {
       try {
         const pdfParseModule = await import('pdf-parse');
         const PDFParserClass = pdfParseModule.PDFParse || (pdfParseModule as any).default?.PDFParse || (pdfParseModule as any).default || pdfParseModule;
-        if (typeof PDFParserClass === 'function') {
+        if (PDFParserClass) {
           const buf = Buffer.from(base64Data, 'base64');
-          try {
-            const p = new PDFParserClass({ data: buf });
-            if (typeof p.getText === 'function') {
-              const res = await p.getText();
-              fullDocText = (res.text || '').replace(/-- \d+ of \d+ --/g, '').trim();
-            } else {
-              const res = await (PDFParserClass as any)(buf);
-              fullDocText = (res.text || '').replace(/-- \d+ of \d+ --/g, '').trim();
+          let parsedResult: any = null;
+          if (typeof PDFParserClass === 'function') {
+            try {
+              const p = new PDFParserClass({ data: buf });
+              if (typeof p.getText === 'function') {
+                const res = await p.getText();
+                totalDocPages = res.total || (res.pages ? res.pages.length : 1);
+                fullDocText = (res.text || '').replace(/-- \d+ of \d+ --/g, '').trim();
+                if (typeof p.destroy === 'function') await p.destroy();
+              } else {
+                parsedResult = await (PDFParserClass as any)(buf);
+              }
+            } catch {
+              parsedResult = await (PDFParserClass as any)(buf);
             }
-          } catch {
-            const res = await (PDFParserClass as any)(buf);
-            fullDocText = (res.text || '').replace(/-- \d+ of \d+ --/g, '').trim();
+          }
+          if (parsedResult) {
+            totalDocPages = parsedResult.numpages || parsedResult.total || 1;
+            fullDocText = (parsedResult.text || '').replace(/-- \d+ of \d+ --/g, '').trim();
           }
         }
       } catch (err: any) {
@@ -1990,10 +2003,12 @@ app.post('/api/process-pdf', async (req, res) => {
     }
 
     if (fullDocText && currentToken && pdfBase64Cache.has(currentToken)) {
-      pdfBase64Cache.get(currentToken)!.extractedText = fullDocText;
+      const cached = pdfBase64Cache.get(currentToken)!;
+      cached.extractedText = fullDocText;
+      (cached as any).totalPages = totalDocPages;
     }
 
-    if (!base64Data) {
+    if (!base64Data && !fullDocText) {
       return res.status(400).json({ error: 'PDF file data is empty or invalid.' });
     }
 
@@ -2012,86 +2027,28 @@ app.post('/api/process-pdf', async (req, res) => {
       },
     });
 
-    const systemInstruction = `Você é um examinador sênior de concursos públicos de alto nível (padrão Cebraspe, FGV e FCC).
-Sua função é receber textos de 'lei seca' ou arquivos anexos e realizar o processamento cognitivo e esquematização tática de alto nível com EXAUSTIVIDADE ABSOLUTA, gerando código HTML estruturado com CSS embutido, preparado para o motor WeasyPrint e impressão A4 em alta fidelidade.
+    const systemInstruction = `Você é um examinador e professor sênior especializado em preparação para concursos públicos de alto nível (padrão Cebraspe, FGV e FCC).
+Sua missão é receber textos de leis secas, códigos normativos ou apostilas teóricas em PDF e produzir uma ESQUEMATIZAÇÃO TÁTICA DE ALTO RENDIMENTO em formato HTML estruturado com CSS embutido (padrão A4 / WeasyPrint).
 
-ARQUITETURA DE GERAÇÃO (A INTELIGÊNCIA & O MOTOR):
-1. O PROCESSAMENTO COGNITIVO (A INTELIGÊNCIA):
-   - Você analisa semanticamente cada artigo, parágrafo, inciso e alínea sem rodar um simples extrator raso.
-   - Sua rede neural faz o trabalho pesado de interpretação jurídica e formatação visual exaustiva.
-   - Extraia e destaque cirurgicamente com <span class="keyword">:
-     * Prazos (ex: 03 (TRÊS) MESES, 18 (DEZOITO) MESES, 90 DIAS, 45 DIAS, 3 ANOS, 22h às 05h, 48h)
-     * Idades e critérios etários (ex: 12 ANOS INCOMPLETOS, 12 e 18 ANOS, MAIOR DE 12 ANOS, MENOR DE 14 ANOS, MENOR DE 16 ANOS, MAIORES DE 18 ANOS, SUPERIOR A 21 ANOS)
-     * Palavras de restrição e exceções (ex: SALVO, EXCETO, NÃO CONSTITUI MOTIVO, IRREVOGÁVEL, É VEDADA, NÃO PODEM ADOTAR, SEM O USO DE CASTIGO FÍSICO ou TRATAMENTO CRUEL OU DEGRADANTE, OBRIGATÓRIA, DISPENSA)
-     * Quóruns, quantitativos e sanções penais (ex: 1 (UM) ACOMPANHANTE, 05 (CINCO) MEMBROS, 04 (QUATRO) ANOS, CRIME, Detenção 2 a 4 anos e multa, Reclusão 4 a 10 anos)
-     * Novidades legislativas e alterações recentes (ex: Novidade LC 15.240/2025, Novo em 2026).
-
-2. O CÓDIGO HTML COM CSS EMBUTIDO (PADRÃO EDITORIAL WEASYPRINT / A4):
-   - HEADER BANNER (.header-banner):
-     Fundo Chumbo Escuro (#1a202c), padding 16px 20px, texto centralizado, border-radius 4px, margin-bottom 16px.
-     H1: [NOME OFICIAL DA LEI] em caixa alta, branco (#ffffff), negrito (font-weight 800), font-size 16pt.
-     P: [Subtítulo da esquematização] em cinza claro (#94a3b8), font-size 9pt.
-   - TÍTULOS E CAPÍTULOS (.section-title ou <h2>):
-     Fundo cinza suave (#e2e8f0), borda lateral esquerda sólida em ardósia escura (#334155, 6px).
-     Texto em caixa alta, negrito, cor chumbo (#1e293b), font-size 11pt, padding 8px 14px, margin 16px 0 12px 0.
-   - CARDS DE ARTIGOS (.artigo-box):
-     Fundo branco (#ffffff), borda suave (#e2e8f0, 1px), cantos arredondados (6px), padding 14px 18px, margin-bottom 14px, box-shadow sutil.
-     Cabeçalho do artigo (.artigo-header): ex: "Art. 1º a 6º - Idades e Prioridade Absoluta" em cor grafite escuro (#0f172a), negrito 700, borda inferior tracejada suave (#e2e8f0).
-     Tópicos com marcadores principais (•), subníveis com círculos vazados (◦) ou listas numeradas (1, 2, 3...).
-   - PALAVRAS-CHAVE (.keyword):
-     Cor Vermelho Vivo (#dc2626), font-weight bold, cirurgicamente aplicada a prazos, exceções, idades e proibições.
-   - BOX DE ALERTA DE PEGADINHA (.alert-box ou .alert):
-     Fundo amarelo âmbar claro (#fffbeb), borda (#fde68a), borda lateral esquerda laranja vivo (#ea580c, 5px), border-radius 6px, padding 10px 14px, margin 12px 0, cor do texto (#78350f).
-     Título: ex: 🚨 ALERTA - [Assunto]:
-   - BOX DE MNEMÔNICOS (.mnemonic-box ou .mnemonic):
-     Fundo verde-água suave (#f0fdfa), borda tracejada verde-água (#0d9488, 1.5px), border-radius 6px, padding 9px 13px, margin 10px 0, cor do texto (#0f766e), texto centralizado.
-     Título com ícone: 🧠 MNEMÔNICO: [Título].
-   - BOX DE EXEMPLOS PRÁTICOS (.exemplo-box):
-     Fundo cinza azulado (#f8fafc), borda esquerda azul viva (#0284c7, 5px), padding 10px 14px, margin 12px 0.
-     Classes .exemplo-certo (verde #16a34a, negrito) e .exemplo-errado (vermelho #dc2626, negrito e tachado).
-
-3. DIRETRIZES DE FORMATAÇÃO E CONTINUIDADE:
-   - Se o material for processado até o final, inclua ao término:
-     <div class="continuidade" style="text-align: center; font-weight: bold; color: #1e293b; margin-top: 15px; padding: 12px; background-color: #e2e8f0; border: 1px solid #cbd5e1; border-radius: 6px;">[LEGISLAÇÃO CONCLUÍDA NA ÍNTEGRA]</div>
-   - Se o processamento parar no meio por limite de contexto, finalize indicando:
-     <div class="continuidade" style="text-align: right; font-size: 8.5pt; color: #64748b; margin-top: 15px;">[ÚLTIMO ARTIGO PROCESSADO: Artigo X]</div>
-
-ESTRUTURA CSS BASE PADRÃO:
-<style>
-    @page { size: A4 portrait; margin: 12mm 14mm; background-color: #f8fafc; }
-    *, *:before, *:after { box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 9.5pt; color: #2d3748; background-color: #f8fafc; margin: 0; padding: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased; }
-    .header-banner { background-color: #1a202c; color: #ffffff; padding: 16px 20px; text-align: center; border-radius: 4px; margin-bottom: 16px; }
-    .header-banner h1, .banner-title { margin: 0; font-size: 16pt; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; color: #ffffff; line-height: 1.2; }
-    .header-banner p, .banner-subtitle { margin: 6px 0 0 0; font-size: 9pt; color: #94a3b8; font-weight: 400; }
-    .section-title, h2 { background-color: #e2e8f0; border-left: 6px solid #334155; color: #1e293b; font-size: 11pt; font-weight: bold; text-transform: uppercase; padding: 8px 14px; margin: 16px 0 12px 0; border-radius: 2px 4px 4px 2px; letter-spacing: 0.3px; page-break-after: avoid; break-after: avoid; }
-    .artigo-box { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 14px 18px; margin-bottom: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); page-break-inside: avoid; break-inside: avoid; }
-    .artigo-header, .caput { font-size: 10.5pt; font-weight: 700; color: #0f172a; margin-bottom: 8px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 4px; }
-    .keyword { color: #dc2626; font-weight: bold; }
-    .artigo-box ul { margin: 0; padding-left: 18px; list-style-type: disc; }
-    .artigo-box ul > li { font-size: 9.5pt; color: #2d3748; line-height: 1.5; margin-bottom: 6px; }
-    .artigo-box ul ul, .artigo-box ul.sub-list { margin: 4px 0 6px 0; padding-left: 18px; list-style-type: circle; }
-    .artigo-box ul ul > li, .artigo-box ul.sub-list > li { font-size: 9.2pt; color: #334155; line-height: 1.45; margin-bottom: 3px; }
-    .artigo-box ol { margin: 4px 0 6px 0; padding-left: 20px; list-style-type: decimal; }
-    .artigo-box ol > li { font-size: 9.2pt; color: #334155; line-height: 1.45; margin-bottom: 3px; }
-    .alert-box, .alert { background-color: #fffbeb; border: 1px solid #fde68a; border-left: 5px solid #ea580c; border-radius: 6px; padding: 10px 14px; margin: 12px 0 8px 0; color: #78350f; font-size: 9.3pt; line-height: 1.45; page-break-inside: avoid; break-inside: avoid; }
-    .alert-box strong, .alert strong { color: #c2410c; }
-    .mnemonic-box, .mnemonic { background-color: #f0fdfa; border: 1.5px dashed #0d9488; border-radius: 6px; padding: 9px 13px; margin: 10px 0; color: #0f766e; font-size: 9.3pt; font-weight: 600; text-align: center; page-break-inside: avoid; break-inside: avoid; }
-    .exemplo-box, .exemplo { background-color: #f8fafc; border: 1px solid #cbd5e1; border-left: 5px solid #0284c7; border-radius: 6px; padding: 10px 14px; margin: 10px 0 8px 0; color: #1e293b; font-size: 9.3pt; line-height: 1.5; page-break-inside: avoid; break-inside: avoid; }
-    .exemplo-box strong, .exemplo strong { color: #0369a1; }
-    .exemplo-certo { color: #16a34a; font-weight: bold; }
-    .exemplo-errado { color: #dc2626; font-weight: bold; text-decoration: line-through; }
-    @media print {
-      body { background-color: #f8fafc !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; padding: 0 !important; }
-      .header-banner { background-color: #1a202c !important; color: #ffffff !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-      .section-title, h2 { background-color: #e2e8f0 !important; border-left: 6px solid #334155 !important; color: #1e293b !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-      .artigo-box { background-color: #ffffff !important; border: 1px solid #e2e8f0 !important; page-break-inside: avoid !important; break-inside: avoid !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-      .alert-box, .alert { background-color: #fffbeb !important; border-left: 5px solid #ea580c !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-      .mnemonic-box, .mnemonic { background-color: #f0fdfa !important; border: 1.5px dashed #0d9488 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-      .exemplo-box, .exemplo { background-color: #f8fafc !important; border-left: 5px solid #0284c7 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-      .keyword { color: #dc2626 !important; font-weight: bold !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    }
-</style>`;
+🎯 DIRETRIZ FUNDAMENTAL: ORGANIZAR AS IDEIAS E O QUE MAIS CAI EM PROVA (PROIBIDO CORTAR MATÉRIA)
+1. NÃO REALIZE CONDENSAÇÃO RASA: O objetivo NÃO é encolher um documento de 30 páginas para 2 páginas sacrificando o conteúdo. Em concursos públicos, as bancas cobram precisamente as exceções, os prazos, as competências e as nuances de cada parágrafo e inciso.
+2. ORGANIZAÇÃO PEDAGÓGICA E ESTRUTURAÇÃO TÁTICA: O objetivo é transformar a prosa densa em esquemas visuais claros, memorizáveis e de consulta rápida:
+   - Mapeie CADA ARTIGO, SEÇÃO OU TÓPICO relevante sem pular dispositivos.
+   - Discrimine todos os incisos e alíneas em tópicos claros (com marcadores ou listas numeradas). É PROIBIDO juntar 8 incisos em uma frase genérica.
+   - Aplique negrito e <span class="keyword"> cirurgicamente nos termos decisivos:
+     * Prazos (ex: 15 DIAS, 30 DIAS, 48 HORAS, 5 ANOS, 120 DIAS)
+     * Idades e marcos temporais (ex: 12 ANOS INCOMPLETOS, MENOR DE 14 ANOS, MAIOR DE 18 ANOS, 60 ANOS OU MAIS)
+     * Exceções e ressalvas (ex: SALVO, EXCETO, RESSALVADOS, NÃO CONSTITUI MOTIVO, INDEPENDENTEMENTE DE)
+     * Proibições e vedações (ex: É VEDADO, É PROIBIDO, NÃO PODEM, NULIDADE)
+     * Quóruns, quantitativos e percentuais (ex: MAIORIA ABSOLUTA, 2/3 DOS MEMBROS, 3/5, 1/3)
+     * Sanções (ex: DETENÇÃO de 1 a 3 anos, RECLUSÃO de 4 a 10 anos, MULTA, DEMISSÃO)
+3. TABELAS COMPARATIVAS TÁTICAS (.tabela-tatica):
+   - Sempre que o tema envolver conceitos contrapostos, classificações paralelas, prazos comparativos ou competências (ex: Competência Privativa da União vs Concorrente; Dolo vs Culpa; Crimes Afiançáveis vs Inafiançáveis; Prescrição vs Decadência), GERE UMA TABELA COMPARATIVA organizando as diferenças com clareza.
+4. ALERTAS DE PEGADINHA DE BANCA (.alert-box):
+   - Destaque as cascas de banana clássicas que as bancas (Cebraspe / FGV / FCC) utilizam (ex: troca de palavras 'pode' por 'deve', 'anulável' por 'nulo', 'discricionário' por 'vinculado').
+5. MNEMÔNICOS E EXEMPLOS PRÁTICOS:
+   - Inclua caixas de mnemônicos (.mnemonic-box) para memorização rápida de requisitos ou listas taxativas.
+   - Preserve integralmente exemplos e modelos práticos em caixas (.exemplo-box) com .exemplo-certo e .exemplo-errado.`;
 
     let suggestedTitle = cleanFileName.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
     let suggestedSubject = 'Direito Constitucional';
@@ -2107,6 +2064,10 @@ ESTRUTURA CSS BASE PADRÃO:
       lowerName.includes('redac')
     ) {
       suggestedSubject = 'Língua Portuguesa';
+    } else if (lowerName.includes('penal') || lowerName.includes('processo penal') || lowerName.includes('cpp') || lowerName.includes('cp')) {
+      suggestedSubject = 'Direito Penal';
+    } else if (lowerName.includes('administrativ') || lowerName.includes('8112') || lowerName.includes('licitac') || lowerName.includes('14133')) {
+      suggestedSubject = 'Direito Administrativo';
     }
 
     // Protocolo Estrito Anti-Loop e Leitura de Âncora (Modo Duplo: Artigos & Tópicos)
@@ -2161,6 +2122,12 @@ ESTRUTURA CSS BASE PADRÃO:
     // Determinação do chunk textual ativo para garantia de cobertura 100% sem truncamento
     let activeTextChunk = '';
     let isFinishedPrematurely = false;
+    let currentChunkStartOffset = 0;
+    let currentChunkEndOffset = 0;
+    let hasMoreDocContent = false;
+
+    // Tamanho do lote: 34.000 caracteres no modo exaustivo para cobrir mais conteúdo com alta densidade
+    const maxChunkLen = summaryDensity === 'concise' ? 24000 : 34000;
 
     if (fullDocText && fullDocText.length > 0) {
       if (processNextChapter) {
@@ -2185,27 +2152,37 @@ ESTRUTURA CSS BASE PADRÃO:
           }
         }
 
+        currentChunkStartOffset = searchOffset;
         const remainingText = fullDocText.slice(searchOffset).trim();
         if (remainingText.length < 150) {
           isFinishedPrematurely = true;
+          hasMoreDocContent = false;
+          currentChunkEndOffset = fullDocText.length;
         } else {
-          const maxChunkLen = 22000;
           if (remainingText.length <= maxChunkLen) {
             activeTextChunk = remainingText;
+            currentChunkEndOffset = fullDocText.length;
+            hasMoreDocContent = false;
           } else {
             let cutIdx = remainingText.lastIndexOf('\n', maxChunkLen);
             if (cutIdx < maxChunkLen * 0.7) cutIdx = maxChunkLen;
             activeTextChunk = remainingText.slice(0, cutIdx).trim();
+            currentChunkEndOffset = searchOffset + cutIdx;
+            hasMoreDocContent = (fullDocText.length - currentChunkEndOffset) > 250;
           }
         }
       } else {
-        const maxChunkLen = 22000;
+        currentChunkStartOffset = 0;
         if (fullDocText.length <= maxChunkLen) {
           activeTextChunk = fullDocText;
+          currentChunkEndOffset = fullDocText.length;
+          hasMoreDocContent = false;
         } else {
           let cutIdx = fullDocText.lastIndexOf('\n', maxChunkLen);
           if (cutIdx < maxChunkLen * 0.7) cutIdx = maxChunkLen;
           activeTextChunk = fullDocText.slice(0, cutIdx).trim();
+          currentChunkEndOffset = cutIdx;
+          hasMoreDocContent = (fullDocText.length - currentChunkEndOffset) > 250;
         }
       }
     }
@@ -2224,80 +2201,97 @@ ESTRUTURA CSS BASE PADRÃO:
         fileName: cleanFileName,
         lastArticle: lastArticleNumber,
         isFinished: true,
+        hasMoreContent: false,
+        totalDocLength: fullDocText ? fullDocText.length : undefined,
+        processedDocLength: fullDocText ? fullDocText.length : undefined,
+        progressPercent: 100,
+        totalPages: totalDocPages,
       });
     }
 
+    const chunkContinuityDirective = hasMoreDocContent
+      ? `\n⚠️ ATENÇÃO CRÍTICA (DOCUMENTO LONGO EM MÚLTIPLOS LOTES):
+Este material em PDF é extenso e possui mais conteúdo após este lote.
+Você está processando o Lote Atual. É TERMINANTEMENTE PROIBIDO emitir "[DOCUMENTO CONCLUÍDO NA ÍNTEGRA]" ou "[LEGISLAÇÃO CONCLUÍDA NA ÍNTEGRA]".
+Ao final deste bloco, você DEVE indicar OBRIGATORIAMENTE a tag com o último artigo ou tópico processado:
+<div class="continuidade" style="text-align: right; font-size: 8.5pt; color: #64748b; margin-top: 15px;">[ÚLTIMO ARTIGO PROCESSADO: Artigo X]</div>
+ou [ÚLTIMO TÓPICO PROCESSADO: Tópico Y - Nome do Tópico].`
+      : `\n- Se este lote cobrir todo o restante do documento até o fim, conclua com:
+<div class="continuidade" style="text-align: center; font-weight: bold; color: #1e293b; margin-top: 15px; padding: 12px; background-color: #e2e8f0; border: 1px solid #cbd5e1; border-radius: 6px;">[DOCUMENTO CONCLUÍDO NA ÍNTEGRA]</div>`;
+
     const promptText = processNextChapter
-      ? `Você é um professor especialista em Concursos Públicos de alto nível (bancas Cebraspe, FGV e FCC).
+      ? `Você é um professor examinador especialista em Concursos Públicos de alto nível (bancas Cebraspe, FGV e FCC).
 
 Trava de Continuidade (Anti-Loop Rigoroso - Modo Duplo: Artigos & Tópicos):
 ${resumeInstruction}
-Processe os próximos conteúdos mantendo a exaustividade absoluta no padrão visual de referência editorial (WeasyPrint / A4).
 
-REGRA CRÍTICA ANTI-LOOP / FIM DO DOCUMENTO (MANDATÓRIO):
-- Se NÃO houver mais artigos nem novos tópicos a serem processados no arquivo PDF, ou se o documento chegou ao fim:
-  NÃO repita conteúdos anteriores. Responda IMEDIATAMENTE e APENAS com a tag:
-  <div class="continuidade" style="text-align: center; font-weight: bold; color: #1e293b; margin-top: 15px; padding: 12px; background-color: #e2e8f0; border: 1px solid #cbd5e1; border-radius: 6px;">[DOCUMENTO CONCLUÍDO NA ÍNTEGRA]</div>
-
-EXAUSTIVIDADE COGNITIVA E COBERTURA AMPLA (MANDATÓRIO):
-- Processe de forma contínua, profunda e exaustiva a maior quantidade de conteúdo possível, sem limitar artificialmente a poucas linhas ou a 1 página.
-- Mapeie todos os tópicos e artigos na sequência exata, transformando cada regra, parágrafo e exemplo em tópicos táticos completos.
-- Ao concluir a extração deste lote, finalize OBRIGATORIAMENTE com a tag de continuidade adequada:
-  * Se for lei seca com artigos: <div class="continuidade" style="text-align: right; font-size: 8.5pt; color: #64748b; margin-top: 15px;">[ÚLTIMO ARTIGO PROCESSADO: Artigo X]</div>
-  * Se for apostila teórica / tópicos (Português, RLM, Doutrina, etc.): <div class="continuidade" style="text-align: right; font-size: 8.5pt; color: #64748b; margin-top: 15px;">[ÚLTIMO TÓPICO PROCESSADO: Tópico Y - Nome do Tópico]</div>
-  * Se for o término integral de todo o documento: <div class="continuidade" style="text-align: center; font-weight: bold; color: #1e293b; margin-top: 15px; padding: 12px; background-color: #e2e8f0; border: 1px solid #cbd5e1; border-radius: 6px;">[DOCUMENTO CONCLUÍDO NA ÍNTEGRA]</div>
-
-DIRETRIZES DE FORMATAÇÃO TÁTICA (PADRÃO WEASYPRINT / A4):
-1. Títulos/Capítulos/Módulos: Use <div class="section-title">MÓDULO/TÍTULO/CAPÍTULO X - [NOME]</div>
-2. Agrupamento em Cards: <div class="artigo-box">
-   <div class="artigo-header">[Nome do Tópico/Artigo Abordado]</div>
-   <ul class="artigo-list">
-     <li><strong>[Tópico/Regra]:</strong> Conceito normativo preservando termos exatos com <span class="keyword">PALAVRAS-CHAVE EM VERMELHO VIVO</span>.</li>
-     <li><strong>[Garantia/Desdobramento]:</strong> Compreende, entre outros:
-       <ol class="numbered-list">
-         <li>Item detalhado com termos restritivos em <span class="keyword">MAIÚSCULAS/VERMELHO</span>.</li>
-       </ol>
-     </li>
-   </ul>
-   <!-- Alerta de Pegadinha quando houver regras críticas, exceções ou trocas de palavras -->
-   <div class="alert-box">
-     <strong>🚨 ALERTA - [Tema]:</strong> Detalhe da pegadinha clássica com <span class="keyword">PALAVRAS DECISIVAS DESTACADAS</span>.
-   </div>
-   <!-- Mnemônico de memorização rápida -->
-   <div class="mnemonic-box">
-     🧠 MNEMÔNICO: [Sigla/Regra]
-   </div>
-   <!-- EXEMPLO PRÁTICO (OBRIGATÓRIO PRESERVAR SE HOUVER NO PDF - ESPECIALMENTE PORTUGUÊS) -->
-   <div class="exemplo-box">
-     <strong>💡 EXEMPLO PRÁTICO:</strong>
-     <p>• <span class="exemplo-certo">CERTO:</span> "[Frase de exemplo correta contida no texto original]"</p>
-     <p>• <span class="exemplo-errado">ERRADO:</span> "[Frase com erro/desvio para contraste se houver]"</p>
-   </div>
- </div>
-3. Destaque Cirúrgico (<span class="keyword">): Prazos, idades, exceções (EXCETO, SALVO, RESSALVADOS), proibições (É VEDADA, VEDADO, NÃO), quóruns e percentuais, competências privativas vs exclusivas.
-4. Preservação Total de Exemplos: NUNCA descarte ou sintetize os exemplos práticos; preserve-os integralmente no HTML.
+DIRETRIZES DE OURO (SEM CORTES / DENSIDADE DE CONCURSO):
+1. O objetivo é ORGANIZAR AS IDEIAS e PRESERVAR TUDO O QUE PODE SER COBRADO EM PROVA. É terminantemente PROIBIDO cortar artigos, incisos, exceções, prazos ou regras para fazer caber em poucas linhas.
+2. Cada artigo ou seção deve ser estruturado detalhadamente em sua respectiva caixa <div class="artigo-box">.
+3. Se um artigo tiver incisos ou parágrafos, todos devem estar listados em marcadores (<ul class="artigo-list"> / <ol class="numbered-list">).
+4. Utilize <table class="tabela-tatica"> sempre que houver prazos comparados, competências opostas ou classificações paralelas.
+5. Destaque palavras-chave (<span class="keyword">) em vermelho vivo: prazos, idades, quóruns, sanções e expressões restritivas (EXCETO, SALVO, VEDADO, NÃO CONSTITUI MOTIVO).
+6. Caixas de pegadinha (<div class="alert-box">) para cascas de banana clássicas de banca e caixas de mnemônicos (<div class="mnemonic-box">).
+7. Exemplos práticos preservados em <div class="exemplo-box"> com .exemplo-certo e .exemplo-errado.
+${chunkContinuityDirective}
 
 Retorne APENAS o código HTML válido, sem markdown (\`\`\`html).`
-      : `Você é um professor especialista em Concursos Públicos de alto nível (bancas Cebraspe, FGV e FCC).
-Sua tarefa é receber o material de estudo no PDF e realizar a estruturação tática e semântica com EXAUSTIVIDADE ABSOLUTA, transformando o conteúdo em um material tático estruturado em formato HTML rigorosamente no padrão de referência WeasyPrint / A4.
+      : `Você é um professor examinador especialista em Concursos Públicos de alto nível (bancas Cebraspe, FGV e FCC).
+Sua missão é realizar a esquematização tática e semântica com EXAUSTIVIDADE ABSOLUTA do material do PDF, gerando código HTML estruturado com CSS embutido no padrão editorial WeasyPrint / A4.
 
-EXAUSTIVIDADE COGNITIVA E COBERTURA AMPLA (MANDATÓRIO):
-- NÃO limite a estruturação a apenas uma página ou a poucos tópicos. Processe o documento de forma contínua, profunda e exaustiva a partir do início, cobrindo todos os dispositivos, regras e capítulos fornecidos com alta densidade e fidelidade.
-- Se o documento inteiro couber neste processamento, mapeie até o final e conclua com:
-<div class="continuidade" style="text-align: center; font-weight: bold; color: #1e293b; margin-top: 15px; padding: 12px; background-color: #e2e8f0; border: 1px solid #cbd5e1; border-radius: 6px;">[DOCUMENTO CONCLUÍDO NA ÍNTEGRA]</div>
-- Se atingir o limite de geração deste lote, encerre com a tag indicando o último ponto processado para que o fluxo de continuidade avance nos itens subsequentes:
-  * Se lei com artigos: <div class="continuidade" style="text-align: right; font-size: 8.5pt; color: #64748b; margin-top: 15px;">[ÚLTIMO ARTIGO PROCESSADO: Artigo X]</div>
-  * Se apostila teórica/tópicos: <div class="continuidade" style="text-align: right; font-size: 8.5pt; color: #64748b; margin-top: 15px;">[ÚLTIMO TÓPICO PROCESSADO: Tópico Y - Nome do Tópico]</div>
+DIRETRIZES DE OURO (SEM CORTES / DENSIDADE DE CONCURSO):
+1. O objetivo deste material NÃO É REDUZIR O TEXTO PARA CABER EM POUCAS PÁGINAS. O objetivo é ORGANIZAR AS IDEIAS e PRESERVAR TUDO O QUE MAIS PODE CAIR EM UMA PROVA DE CONCURSO.
+2. Em concursos públicos, as questões de prova atacam justamente as exceções, prazos, competências e detalhes específicos. Não faça resumos rasos que eliminem os detalhes da matéria.
+3. Não resuma 10 incisos em 1 frase vaga. Mapeie cada inciso e parágrafo na sequência exata com clareza tática e destaques em <span class="keyword">.
+4. Utilize tabelas comparativas (<table class="tabela-tatica">) sempre que houver duas ou mais categorias comparáveis (ex: prazos, competências, institutos opostos).
+5. Inclua caixas de pegadinha (<div class="alert-box">) e caixas de mnemônicos (<div class="mnemonic-box">) nos pontos de alta incidência de prova.
+6. Preserve todos os exemplos práticos em <div class="exemplo-box">.
+${chunkContinuityDirective}
 
-DIRETRIZES ANTI-RESUMO (REGRA ZERO - CRÍTICA):
-O seu objetivo NÃO é reduzir o tamanho do texto original. O objetivo é alterar a formatação (de prosa para tópicos táticos esquematizados). Você é terminantemente PROIBIDO de pular regras, artigos, incisos ou exemplos práticos para economizar espaço. Trate cada ponto como uma questão de prova. Mapeie exaustivamente, na exata ordem do texto fornecido.
-- Se a norma inteira couber neste processamento, mapeie até o último artigo e finalize com:
-<div class="continuidade" style="text-align: center; font-weight: bold; color: #1e293b; margin-top: 15px; padding: 12px; background-color: #e2e8f0; border: 1px solid #cbd5e1; border-radius: 6px;">[LEGISLAÇÃO CONCLUÍDA NA ÍNTEGRA]</div>
-- Se atingir o limite de geração deste lote, encerre com a tag indicando o último artigo processado para que o fluxo de continuidade avance nos artigos subsequentes:
-<div class="continuidade" style="text-align: right; font-size: 8.5pt; color: #64748b; margin-top: 15px;">[ÚLTIMO ARTIGO PROCESSADO: Artigo X]</div>
-
-DIRETRIZES ANTI-RESUMO (REGRA ZERO - CRÍTICA):
-O seu objetivo NÃO é reduzir o tamanho do texto original. O objetivo é alterar a formatação (de prosa para tópicos táticos esquematizados). Você é terminantemente PROIBIDO de pular artigos, incisos, alíneas ou parágrafos para economizar espaço. Trate cada dispositivo como uma questão de prova. Mapeie exaustivamente, na exata ordem do texto fornecido.
+ESTRUTURA CSS EMBUTIDA NO <head>:
+<style>
+    @page { size: A4 portrait; margin: 12mm 14mm; background-color: #f8fafc; }
+    *, *:before, *:after { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 9.5pt; color: #2d3748; background-color: #f8fafc; margin: 0; padding: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased; }
+    .header-banner { background-color: #1a202c; color: #ffffff; padding: 16px 20px; text-align: center; border-radius: 4px; margin-bottom: 16px; }
+    .header-banner h1, .banner-title { margin: 0; font-size: 16pt; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; color: #ffffff; line-height: 1.2; }
+    .header-banner p, .banner-subtitle { margin: 6px 0 0 0; font-size: 9pt; color: #94a3b8; font-weight: 400; }
+    .section-title, h2 { background-color: #e2e8f0; border-left: 6px solid #334155; color: #1e293b; font-size: 11pt; font-weight: bold; text-transform: uppercase; padding: 8px 14px; margin: 16px 0 12px 0; border-radius: 2px 4px 4px 2px; letter-spacing: 0.3px; page-break-after: avoid; break-after: avoid; }
+    .artigo-box { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 14px 18px; margin-bottom: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); page-break-inside: avoid; break-inside: avoid; }
+    .artigo-header, .caput { font-size: 10.5pt; font-weight: 700; color: #0f172a; margin-bottom: 8px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 4px; }
+    .keyword { color: #dc2626; font-weight: bold; }
+    .artigo-box ul { margin: 0; padding-left: 18px; list-style-type: disc; }
+    .artigo-box ul > li { font-size: 9.5pt; color: #2d3748; line-height: 1.5; margin-bottom: 6px; }
+    .artigo-box ul ul, .artigo-box ul.sub-list { margin: 4px 0 6px 0; padding-left: 18px; list-style-type: circle; }
+    .artigo-box ul ul > li, .artigo-box ul.sub-list > li { font-size: 9.2pt; color: #334155; line-height: 1.45; margin-bottom: 3px; }
+    .artigo-box ol { margin: 4px 0 6px 0; padding-left: 20px; list-style-type: decimal; }
+    .artigo-box ol > li { font-size: 9.2pt; color: #334155; line-height: 1.45; margin-bottom: 3px; }
+    .alert-box, .alert { background-color: #fffbeb; border: 1px solid #fde68a; border-left: 5px solid #ea580c; border-radius: 6px; padding: 10px 14px; margin: 12px 0 8px 0; color: #78350f; font-size: 9.3pt; line-height: 1.45; page-break-inside: avoid; break-inside: avoid; }
+    .alert-box strong, .alert strong { color: #c2410c; }
+    .mnemonic-box, .mnemonic { background-color: #f0fdfa; border: 1.5px dashed #0d9488; border-radius: 6px; padding: 9px 13px; margin: 10px 0; color: #0f766e; font-size: 9.3pt; font-weight: 600; text-align: center; page-break-inside: avoid; break-inside: avoid; }
+    .exemplo-box, .exemplo { background-color: #f8fafc; border: 1px solid #cbd5e1; border-left: 5px solid #0284c7; border-radius: 6px; padding: 10px 14px; margin: 10px 0 8px 0; color: #1e293b; font-size: 9.3pt; line-height: 1.5; page-break-inside: avoid; break-inside: avoid; }
+    .exemplo-box strong, .exemplo strong { color: #0369a1; }
+    .exemplo-certo { color: #16a34a; font-weight: bold; }
+    .exemplo-errado { color: #dc2626; font-weight: bold; text-decoration: line-through; }
+    .tabela-tatica { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 9pt; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; page-break-inside: avoid; break-inside: avoid; }
+    .tabela-tatica th { background: #1e293b; color: #ffffff; padding: 8px 12px; text-align: left; font-size: 8.5pt; text-transform: uppercase; font-weight: 700; letter-spacing: 0.3px; }
+    .tabela-tatica td { padding: 8px 12px; border-bottom: 1px solid #e2e8f0; color: #334155; line-height: 1.45; }
+    .tabela-tatica tr:nth-child(even) { background-color: #f8fafc; }
+    .tabela-tatica tr:last-child td { border-bottom: none; }
+    .banca-tag { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 7.5pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; margin-right: 4px; }
+    @media print {
+      body { background-color: #f8fafc !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; padding: 0 !important; }
+      .header-banner { background-color: #1a202c !important; color: #ffffff !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      .section-title, h2 { background-color: #e2e8f0 !important; border-left: 6px solid #334155 !important; color: #1e293b !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      .artigo-box { background-color: #ffffff !important; border: 1px solid #e2e8f0 !important; page-break-inside: avoid !important; break-inside: avoid !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      .alert-box, .alert { background-color: #fffbeb !important; border-left: 5px solid #ea580c !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      .mnemonic-box, .mnemonic { background-color: #f0fdfa !important; border: 1.5px dashed #0d9488 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      .exemplo-box, .exemplo { background-color: #f8fafc !important; border-left: 5px solid #0284c7 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      .tabela-tatica { background-color: #ffffff !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      .tabela-tatica th { background-color: #1e293b !important; color: #ffffff !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      .keyword { color: #dc2626 !important; font-weight: bold !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    }
+</style>
 
 ESTRUTURA DO HTML DENTRO DE <body>:
 1. No topo (Header Banner Chumbo Escuro #1a202c):
@@ -2309,44 +2303,36 @@ ESTRUTURA DO HTML DENTRO DE <body>:
 2. Para cada Título/Capítulo:
 <div class="section-title">[TÍTULO/CAPÍTULO - NOME COMPLETO]</div>
 
-3. Para cada grupo temático de artigos ou artigo extenso (Card Branco com Borda Suave):
+3. Para cada artigo ou tema:
 <div class="artigo-box">
-  <div class="artigo-header">Art. Xº a Yº - [Nome do Tópico Abordado]</div>
+  <div class="artigo-header">Art. Xº - [Nome do Tópico Abordado]</div>
   <ul class="artigo-list">
-    <li><strong>[Tópico/Quem se Aplica] (Art. Xº):</strong> [Texto do caput ou dispositivo com verbos preservados e <span class="keyword">PALAVRAS-CHAVE EM VERMELHO VIVO</span>].</li>
-    <li><strong>[Regra/Garantia] (Art. Yº):</strong> Compreende, entre outros:
+    <li><strong>[Conceito / Caput]:</strong> [Texto normativo com verbos preservados e <span class="keyword">PALAVRAS-CHAVE EM VERMELHO VIVO</span>].</li>
+    <li><strong>[Desdobramentos/Incisos]:</strong> Compreende, entre outros:
       <ol class="numbered-list">
-        <li>[Item 1 com <span class="keyword">TERMOS CRÍTICOS</span>]</li>
-        <li>[Item 2 com exceções em <span class="keyword">EXCETO / SALVO</span>]</li>
+        <li>[Inciso I com <span class="keyword">TERMOS CRÍTICOS</span>]</li>
+        <li>[Inciso II com exceções em <span class="keyword">EXCETO / SALVO</span>]</li>
       </ol>
     </li>
-    <!-- Tópico com apontador quando aplicável -->
-    <li class="callout-point">👉 <strong>[Ponto de Destaque]:</strong> [Regra específica com <span class="keyword">DESTAQUE</span>].</li>
   </ul>
-  
-  <!-- Box de Alerta para Pegadinha ou Superprioridade -->
+  <!-- Alerta de Banca quando houver regra com histórico de pegadinha -->
   <div class="alert-box">
-    <strong>🚨 ALERTA - [Título do Alerta] (§Xº):</strong> [Explicação clara da pegadinha com <span class="keyword">TERMOS RESTRITIVOS DESTACADOS</span>].
+    <strong>🚨 ALERTA DE BANCA (§Xº):</strong> [Explicação clara da pegadinha com <span class="keyword">TERMOS RESTRITIVOS DESTACADOS</span>].
   </div>
-
-  <!-- Mnemônico de memorização rápida -->
-  <div class="mnemonic-box">
-    🧠 MNEMÔNICO: [Título / Fórmula]
-  </div>
-
-  <!-- Box de Exemplos Práticos (MANDATÓRIO: Se houver frases de exemplo no PDF, preserve todas) -->
+  <!-- Tabela comparativa quando houver categorias ou prazos paralelos -->
+  <table class="tabela-tatica">
+    <thead><tr><th>Instituto</th><th>Prazo / Requisito</th><th>Exceção</th></tr></thead>
+    <tbody><tr><td><strong>Regra A</strong></td><td>15 dias</td><td>Salvo motivo justificado</td></tr></tbody>
+  </table>
+  <!-- Mnemônico de memorização -->
+  <div class="mnemonic-box">🧠 MNEMÔNICO: [Sigla / Macete]</div>
+  <!-- Exemplo Prático se houver -->
   <div class="exemplo-box">
     <strong>💡 EXEMPLO PRÁTICO:</strong>
-    <p>• <span class="exemplo-certo">CERTO:</span> "[Frase modelo correta contida no material]"</p>
-    <p>• <span class="exemplo-errado">ERRADO:</span> "[Frase incorreta ou desvio gramatical para contraste]"</p>
+    <p>• <span class="exemplo-certo">CERTO:</span> "[Frase modelo correta]"</p>
+    <p>• <span class="exemplo-errado">ERRADO:</span> "[Frase com pegadinha clássica]"</p>
   </div>
 </div>
-
-4. Preservação de Exemplos (Língua Portuguesa e Casos Práticos): Se o texto original contiver frases de exemplo, orações ilustrativas ou aplicações práticas da regra, NUNCA as elimine ou resuma. Mantenha os exemplos rigorosamente no esquema tático dentro de .exemplo-box.
-
-5. No final do <body>:
-<div class="continuidade" style="text-align: right; font-size: 8.5pt; color: #64748b; margin-top: 15px;">[ÚLTIMO ARTIGO PROCESSADO: Artigo X]</div>
-(Se concluído integralmente: <div class="continuidade" style="text-align: center; font-weight: bold; color: #1e293b; margin-top: 15px; padding: 12px; background-color: #e2e8f0; border: 1px solid #cbd5e1; border-radius: 6px;">[LEGISLAÇÃO CONCLUÍDA NA ÍNTEGRA]</div>).
 
 Retorne APENAS o código HTML válido e completo (com <!DOCTYPE html>, <html>, <head>, <style> e <body>). Não adicione markdown (como \`\`\`html).`;
 
@@ -2465,7 +2451,20 @@ Retorne APENAS o código HTML válido e completo (com <!DOCTYPE html>, <html>, <
     // 3. Determinar se o documento terminou ou se deve continuar (Detector de Avanço Real Triplo)
     let isDocumentFinished = false;
 
-    if (explicitFinishedTag) {
+    if (hasMoreDocContent) {
+      // REGRA DE SEGURANÇA MÁXIMA: Se ainda há texto substancial no PDF original, o documento NUNCA pode ser dado por concluído
+      isDocumentFinished = false;
+      // Remover qualquer tag indevida de conclusão gerada no meio do documento
+      summaryBody = summaryBody
+        .replace(/<div[^>]*class=["']?continuidade["']?[^>]*>[\s\S]*?(?:CONCLUÍDO|CONCLUÍDA) NA ÍNTEGRA[\s\S]*?<\/div>/gi, '');
+      if (!summaryBody.includes('[ÚLTIMO ARTIGO PROCESSADO') && !summaryBody.includes('[ÚLTIMO TÓPICO PROCESSADO')) {
+        if (newlyFoundArticle !== null) {
+          summaryBody += `\n<div class="continuidade" style="text-align: right; font-size: 8.5pt; color: #64748b; margin-top: 15px;">[ÚLTIMO ARTIGO PROCESSADO: Artigo ${newlyFoundArticle}]</div>`;
+        } else if (newlyFoundTopic) {
+          summaryBody += `\n<div class="continuidade" style="text-align: right; font-size: 8.5pt; color: #64748b; margin-top: 15px;">[ÚLTIMO TÓPICO PROCESSADO: ${newlyFoundTopic}]</div>`;
+        }
+      }
+    } else if (explicitFinishedTag) {
       isDocumentFinished = true;
     } else if (processNextChapter) {
       const hasArticleAdvance = newlyFoundArticle !== null && lastArticleNumber !== null && newlyFoundArticle > lastArticleNumber;
@@ -2479,6 +2478,8 @@ Retorne APENAS o código HTML válido e completo (com <!DOCTYPE html>, <html>, <
         console.log(`[Anti-Loop Server] Nenhum avanço posterior detectado no lote. Finalizando documento.`);
         isDocumentFinished = true;
       }
+    } else {
+      isDocumentFinished = true;
     }
 
     // Se o documento foi concluído, assegurar a tag visual de conclusão na íntegra
@@ -2586,7 +2587,15 @@ ${summaryBody}
       suggestedSubject,
       fileName: cleanFileName,
       lastArticle: finalHighestArticle,
+      lastTopic: newlyFoundTopic || lastTopicLabel || undefined,
       isFinished: finalIsFinished,
+      hasMoreContent: hasMoreDocContent,
+      totalDocLength: fullDocText ? fullDocText.length : undefined,
+      processedDocLength: currentChunkEndOffset || undefined,
+      progressPercent: fullDocText && fullDocText.length > 0
+        ? Math.min(100, Math.round((currentChunkEndOffset / fullDocText.length) * 100))
+        : (finalIsFinished ? 100 : undefined),
+      totalPages: totalDocPages || undefined,
     });
   } catch (err: any) {
     const friendlyError = formatAiErrorMessage(err);

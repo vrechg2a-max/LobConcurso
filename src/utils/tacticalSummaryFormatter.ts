@@ -208,6 +208,53 @@ export const STANDARD_TACTICAL_CSS = `
     page-break-before: avoid;
     break-inside: avoid;
   }
+  .tabela-tatica {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 9pt;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    overflow: hidden;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .tabela-tatica th {
+    background: #1e293b !important;
+    color: #ffffff !important;
+    padding: 8px 12px;
+    text-align: left;
+    font-size: 8.5pt;
+    text-transform: uppercase;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+  }
+  .tabela-tatica td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #e2e8f0;
+    color: #334155;
+    line-height: 1.45;
+  }
+  .tabela-tatica tr:nth-child(even) {
+    background-color: #f8fafc;
+  }
+  .tabela-tatica tr:last-child td {
+    border-bottom: none;
+  }
+  .banca-tag {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 7.5pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: #f1f5f9;
+    color: #475569;
+    border: 1px solid #cbd5e1;
+    margin-right: 4px;
+  }
   @media print {
     body {
       background-color: #f8fafc !important;

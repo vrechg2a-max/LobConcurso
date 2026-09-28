@@ -402,6 +402,11 @@ const buildFullA4Template = (content: string, title: string, subject: string): s
     .exemplo-box strong, .exemplo strong { color: #0369a1; }
     .exemplo-certo { color: #16a34a; font-weight: bold; }
     .exemplo-errado { color: #dc2626; font-weight: bold; text-decoration: line-through; }
+    .tabela-tatica { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 9pt; background-color: #ffffff; border-radius: 6px; overflow: hidden; border: 1px solid #cbd5e1; page-break-inside: avoid; break-inside: avoid; }
+    .tabela-tatica th { background-color: #1e293b; color: #ffffff; padding: 8px 10px; font-weight: 700; text-align: left; font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.3px; }
+    .tabela-tatica td { padding: 7px 10px; border-bottom: 1px solid #e2e8f0; color: #334155; vertical-align: top; }
+    .tabela-tatica tr:nth-child(even) td { background-color: #f8fafc; }
+    .banca-tag { display: inline-block; background-color: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 8pt; font-weight: 700; padding: 1px 6px; border-radius: 4px; margin-right: 4px; text-transform: uppercase; }
     @media print {
       body { background-color: #f4f6f9 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; padding: 0; }
       .header-banner { background-color: #1a202c !important; color: #ffffff !important; }
@@ -409,6 +414,9 @@ const buildFullA4Template = (content: string, title: string, subject: string): s
       .artigo-box { background-color: #ffffff !important; border: 1px solid #e2e8f0 !important; page-break-inside: avoid !important; break-inside: avoid !important; }
       .alert-box, .alert { background-color: #fffdf5 !important; border-left: 4px solid #ea580c !important; }
       .exemplo-box, .exemplo { background-color: #f8fafc !important; border-left: 4px solid #0284c7 !important; }
+      .tabela-tatica th { background-color: #1e293b !important; color: #ffffff !important; }
+      .tabela-tatica tr:nth-child(even) td { background-color: #f8fafc !important; }
+      .banca-tag { background-color: #eff6ff !important; color: #1d4ed8 !important; border: 1px solid #bfdbfe !important; }
       .keyword { color: #dc2626 !important; font-weight: bold !important; }
     }
 </style>
@@ -503,6 +511,17 @@ export const StudyMaterialView: React.FC<StudyMaterialViewProps> = ({
   const [userSelectedAnswers, setUserSelectedAnswers] = useState<Record<string, string>>({});
   const [revealedAnswers, setRevealedAnswers] = useState<Record<string, boolean>>({});
   const [repeatingGroupActiveTab, setRepeatingGroupActiveTab] = useState<Record<string, 'comment' | 'trap'>>({});
+
+  // Summary Depth & Continuous Full-Document Processing
+  const [summaryDensity, setSummaryDensity] = useState<'exhaustive' | 'concise'>('exhaustive');
+  const [autoProcessAll, setAutoProcessAll] = useState<boolean>(true);
+  const [docProgress, setDocProgress] = useState<{
+    totalChars?: number;
+    processedChars?: number;
+    percent?: number;
+    totalPages?: number;
+    hasMore?: boolean;
+  } | null>(null);
 
   // Library / Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -863,6 +882,7 @@ export const StudyMaterialView: React.FC<StudyMaterialViewProps> = ({
             fileUrl: uploadPayloadUrl,
             fileName: uploadedFile.fileName,
             extractedText: importedText || visualizerText || '',
+            summaryDensity,
           }),
         },
         1
@@ -879,6 +899,16 @@ export const StudyMaterialView: React.FC<StudyMaterialViewProps> = ({
         setFileToken(data.fileToken);
       }
 
+      if (data.totalDocLength) {
+        setDocProgress({
+          totalChars: data.totalDocLength,
+          processedChars: data.processedDocLength,
+          percent: data.progressPercent || 0,
+          totalPages: data.totalPages,
+          hasMore: data.hasMoreContent,
+        });
+      }
+
       setDetectedTitle(data.suggestedTitle || uploadedFile.fileName.replace(/\.[^/.]+$/, ''));
       setDetectedSubject(data.suggestedSubject || 'Direito Constitucional');
 
@@ -889,9 +919,24 @@ export const StudyMaterialView: React.FC<StudyMaterialViewProps> = ({
           '🎉 Legislação 100% concluída na íntegra! Todos os artigos do PDF foram mapeados. Downloads liberados.'
         );
       } else {
-        setPdfProcessSuccess(
-          `Legislação "${uploadedFile.fileName}" mapeada com sucesso até o Artigo ${st.lastArticle || 'inicial'}. Esquematização Tática renderizada abaixo.`
-        );
+        const progressLabel = st.lastArticle
+          ? `Artigo ${st.lastArticle}`
+          : st.lastTopic
+          ? `Tópico: ${st.lastTopic}`
+          : 'lote inicial';
+        
+        if (autoProcessAll) {
+          setPdfProcessSuccess(
+            `Lote 1 mapeado até ${progressLabel}. Mapeamento contínuo em lote iniciado automaticamente para cobrir 100% do PDF sem cortes...`
+          );
+          setTimeout(() => {
+            handleAutoProcessUntilFinished(data.fileToken, uploadPayloadUrl);
+          }, 350);
+        } else {
+          setPdfProcessSuccess(
+            `Documento "${uploadedFile.fileName}" mapeado até ${progressLabel}. Esquematização Tática renderizada abaixo.`
+          );
+        }
       }
     } catch (err: any) {
       console.error('PDF processing error:', err);
@@ -904,8 +949,16 @@ export const StudyMaterialView: React.FC<StudyMaterialViewProps> = ({
   };
 
   // Process next chapter / batch workflow for long normative documents and theoretical booklets
-  const handleProcessNextChapter = async (targetStartArticle?: number, currentTextOverride?: string, lastTopicHint?: string | null) => {
-    if (!fileData.fileUrl && !fileTokenRef.current) return null;
+  const handleProcessNextChapter = async (
+    targetStartArticle?: number,
+    currentTextOverride?: string,
+    lastTopicHint?: string | null,
+    overrideToken?: string,
+    overrideUrl?: string
+  ) => {
+    const token = overrideToken || fileTokenRef.current;
+    const url = overrideUrl || fileData.fileUrl;
+    if (!url && !token) return null;
     setIsProcessingPdf(true);
     setPdfProcessError(null);
     setPdfProcessSuccess(null);
@@ -925,12 +978,13 @@ export const StudyMaterialView: React.FC<StudyMaterialViewProps> = ({
         manualLastArticle: startArt ? startArt - 1 : status.lastArticle,
         lastProcessedTopic: lastTopicHint || status.lastTopic || undefined,
         extractedText: importedText || '',
+        summaryDensity,
       };
 
-      if (fileTokenRef.current) {
-        payload.fileToken = fileTokenRef.current;
-      } else if (fileData.fileUrl) {
-        payload.fileUrl = fileData.fileUrl;
+      if (token) {
+        payload.fileToken = token;
+      } else if (url) {
+        payload.fileUrl = url;
       }
 
       let res = await robustFetch(
@@ -944,10 +998,10 @@ export const StudyMaterialView: React.FC<StudyMaterialViewProps> = ({
       );
 
       // Automatic fallback ONLY if session token expired or was lost on the server (HTTP 400)
-      if (res.status === 400 && payload.fileToken && fileData.fileUrl) {
+      if (res.status === 400 && payload.fileToken && (url || fileData.fileUrl)) {
         console.warn('[Session] Token do PDF expirou na memória do servidor. Reenviando payload completo com o arquivo original...');
         delete payload.fileToken;
-        payload.fileUrl = fileData.fileUrl;
+        payload.fileUrl = url || fileData.fileUrl;
         res = await robustFetch(
           '/api/process-pdf',
           {
@@ -964,6 +1018,16 @@ export const StudyMaterialView: React.FC<StudyMaterialViewProps> = ({
       if (data.fileToken) {
         fileTokenRef.current = data.fileToken;
         setFileToken(data.fileToken);
+      }
+
+      if (data.totalDocLength) {
+        setDocProgress({
+          totalChars: data.totalDocLength,
+          processedChars: data.processedDocLength,
+          percent: data.progressPercent || 0,
+          totalPages: data.totalPages,
+          hasMore: data.hasMoreContent,
+        });
       }
 
       // data.summaryText is already the merged, complete continuous HTML
@@ -1001,12 +1065,14 @@ export const StudyMaterialView: React.FC<StudyMaterialViewProps> = ({
   };
 
   // Process continuously in automated batches until the whole PDF is completed
-  const handleAutoProcessUntilFinished = async () => {
-    if ((!fileData.fileUrl && !fileTokenRef.current) || isProcessingPdf || isAutoProcessing) return;
+  const handleAutoProcessUntilFinished = async (initialFileToken?: string, initialUrl?: string) => {
+    const token = initialFileToken || fileTokenRef.current;
+    const url = initialUrl || fileData.fileUrl;
+    if ((!url && !token) || isAutoProcessing) return;
     setIsAutoProcessing(true);
     abortAutoProcessRef.current = false;
     setPdfProcessError(null);
-    setPdfProcessSuccess('Iniciando processamento contínuo em lote até o fim do PDF...');
+    setPdfProcessSuccess('Iniciando processamento contínuo em lote até o fim do PDF sem cortes...');
 
     let currentText = visualizerTextRef.current || visualizerText;
     let iteration = 1;
@@ -1046,7 +1112,7 @@ export const StudyMaterialView: React.FC<StudyMaterialViewProps> = ({
 
         while (batchAttempts < maxBatchAttempts && !abortAutoProcessRef.current) {
           try {
-            data = await handleProcessNextChapter(nextArt, currentText, status.lastTopic);
+            data = await handleProcessNextChapter(nextArt, currentText, status.lastTopic, token, url);
             break;
           } catch (batchErr: any) {
             batchAttempts++;
@@ -1810,6 +1876,58 @@ export const StudyMaterialView: React.FC<StudyMaterialViewProps> = ({
                   )}
                 </div>
 
+                {/* PDF Summarizer Config: Density & Full Coverage for Concursos */}
+                <div className="p-3.5 bg-gradient-to-r from-indigo-50/80 via-slate-50 to-indigo-50/80 border border-indigo-200 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 font-bold text-indigo-950">
+                      <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
+                      <span>Profundidade e Cobertura do Resumo (Foco em Concursos)</span>
+                    </div>
+                    <p className="text-slate-600 text-[11.5px] leading-relaxed">
+                      Organiza ideias, prazos, exceções e tabelas comparativas <strong>sem cortar conteúdo</strong> para caber em poucas páginas.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3 shrink-0">
+                    <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200 shadow-2xs">
+                      <button
+                        type="button"
+                        onClick={() => setSummaryDensity('exhaustive')}
+                        className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                          summaryDensity === 'exhaustive'
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                        title="Mapeia todos os artigos, incisos e pegadinhas em detalhes, sem cortes bruscos"
+                      >
+                        🎯 Exaustivo (Sem Cortes)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSummaryDensity('concise')}
+                        className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                          summaryDensity === 'concise'
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                        title="Resumo condensado para revisões rápidas"
+                      >
+                        ⚡ Rápido
+                      </button>
+                    </div>
+
+                    <label className="flex items-center gap-2 cursor-pointer select-none text-slate-700 font-medium">
+                      <input
+                        type="checkbox"
+                        checked={autoProcessAll}
+                        onChange={(e) => setAutoProcessAll(e.target.checked)}
+                        className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                      />
+                      <span>Mapear 100% contínuo</span>
+                    </label>
+                  </div>
+                </div>
+
                 {/* Restricted PDF Uploader Element */}
                 <PdfUploader
                   currentFileName={fileData.fileName}
@@ -1819,20 +1937,43 @@ export const StudyMaterialView: React.FC<StudyMaterialViewProps> = ({
                 />
 
                 {/* PDF Processing Progress Indicator */}
-                {isProcessingPdf && (
+                {(isProcessingPdf || isAutoProcessing) && (
                   <div
                     id="pdf-processing-indicator"
-                    className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-xl flex items-center gap-3 animate-pulse text-indigo-900 text-xs"
+                    className="p-4 bg-indigo-50 border border-indigo-200 rounded-xl space-y-2 text-indigo-950 text-xs shadow-xs"
                   >
-                    <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin shrink-0" />
-                    <div>
-                      <span className="font-bold block">
-                        Processando PDF & Gerando Esquematização Tática...
-                      </span>
-                      <span className="text-indigo-700">
-                        Mapeando blocos de artigos por ordem cronológica, marcadores com listas exaustivas, destaques táticos e blocos de Cuidado (Pegadinha/Exceção).
-                      </span>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin shrink-0" />
+                        <span className="font-bold text-sm">
+                          {isAutoProcessing
+                            ? `Processando em Lotes Contínuos (Lote ${autoBatchCount})...`
+                            : 'Analisando PDF & Gerando Esquematização Tática...'}
+                        </span>
+                      </div>
+                      {docProgress?.percent !== undefined && (
+                        <span className="font-mono font-bold text-indigo-700 text-xs">
+                          {docProgress.percent}% percorrido
+                        </span>
+                      )}
                     </div>
+                    <p className="text-indigo-800 text-[11.5px] leading-relaxed">
+                      Mapeando cronologicamente artigos, incisos, listas exaustivas, prazos, exceções, tabelas táticas e pegadinhas de bancas examinadoras sem suprimir conteúdo.
+                    </p>
+                    {docProgress && (
+                      <div className="pt-1.5 space-y-1">
+                        <div className="w-full bg-indigo-100/80 h-2 rounded-full overflow-hidden">
+                          <div
+                            className="bg-indigo-600 h-full rounded-full transition-all duration-500"
+                            style={{ width: `${Math.max(5, Math.min(100, docProgress.percent || 15))}%` }}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-indigo-700">
+                          <span>{docProgress.totalPages ? `Documento de ~${docProgress.totalPages} páginas` : 'Processando documento longo'}</span>
+                          <span>{docProgress.processedChars ? `${Math.round(docProgress.processedChars / 1000)}k chars mapeados` : ''}</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -2340,8 +2481,9 @@ export const StudyMaterialView: React.FC<StudyMaterialViewProps> = ({
 
               const status = extractSummaryStatus(visualizerText);
               const isFullyCompleted = status.isFinished || isMarkedFinished;
-              const lastArt = status.lastArticle || 3;
-              const defaultNextArt = lastArt + 1;
+              const hasArticle = status.lastArticle !== null && status.lastArticle > 0;
+              const lastArt = status.lastArticle;
+              const defaultNextArt = lastArt ? lastArt + 1 : 1;
               const currentInputStart = manualStartArticle ? parseInt(manualStartArticle, 10) : defaultNextArt;
 
               if (isFullyCompleted) {
@@ -2449,14 +2591,20 @@ export const StudyMaterialView: React.FC<StudyMaterialViewProps> = ({
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-sm text-indigo-950">
-                            Processamento em Andamento — Parou no Artigo {lastArt}
+                            {hasArticle
+                              ? `Processamento em Andamento — Parou no Artigo ${lastArt}`
+                              : `Processamento em Andamento — ${status.lastTopic ? `Parou em: "${status.lastTopic}"` : 'Lote Mapeado'}`}
                           </span>
                           <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 text-[10px] font-bold">
                             LOTE ATUAL CONCLUÍDO
                           </span>
                         </div>
                         <p className="text-slate-600 text-xs mt-1">
-                          A IA estruturou até o <strong>Artigo {lastArt}</strong>. Escolha como deseja continuar a extração até finalizar o arquivo PDF:
+                          {hasArticle ? (
+                            <>A IA estruturou até o <strong>Artigo {lastArt}</strong>. Escolha como deseja continuar a extração até finalizar o arquivo PDF:</>
+                          ) : (
+                            <>A IA estruturou este bloco sem cortes. Prossiga para cobrir os próximos tópicos e páginas do arquivo PDF:</>
+                          )}
                         </p>
                       </div>
                     </div>
@@ -2466,47 +2614,79 @@ export const StudyMaterialView: React.FC<StudyMaterialViewProps> = ({
                         type="button"
                         onClick={() => setIsMarkedFinished(true)}
                         className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-medium cursor-pointer transition-colors shadow-xs"
-                        title="Se o PDF já chegou ao último artigo da lei, clique para concluir e liberar downloads"
+                        title="Se o PDF já chegou ao término do material, clique para concluir e liberar downloads"
                       >
                         Marcar como Concluído
                       </button>
                     </div>
                   </div>
 
+                  {/* Coverage Progress Bar if metadata is available */}
+                  {docProgress && (
+                    <div className="p-3 bg-white/80 border border-indigo-100 rounded-xl space-y-1.5">
+                      <div className="flex items-center justify-between text-[11.5px]">
+                        <span className="font-semibold text-slate-700 flex items-center gap-1.5">
+                          <BookOpen className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>Mapeamento do PDF: {docProgress.totalPages ? `~${docProgress.totalPages} páginas` : 'Documento completo'}</span>
+                        </span>
+                        <span className="font-bold text-indigo-700 font-mono">
+                          {docProgress.percent || 0}% percorrido
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                        <div
+                          className="bg-gradient-to-r from-indigo-500 to-emerald-500 h-full rounded-full transition-all duration-500"
+                          style={{ width: `${Math.max(5, Math.min(100, docProgress.percent || 20))}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between text-[10.5px] text-slate-500">
+                        <span>{docProgress.processedChars ? `${Math.round(docProgress.processedChars / 1000)}k caracteres analisados` : ''}</span>
+                        <span>{docProgress.hasMore ? 'Aguardando próximos lotes para cobrir 100%' : 'Conteúdo 100% percorrido'}</span>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Controls Bar */}
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-3 border-t border-indigo-100">
-                    <div className="flex items-center gap-2">
-                      <label htmlFor="input-manual-start-art" className="text-xs font-semibold text-slate-700 whitespace-nowrap">
-                        Continuar do Artigo:
-                      </label>
-                      <input
-                        id="input-manual-start-art"
-                        type="number"
-                        min={1}
-                        value={manualStartArticle || defaultNextArt}
-                        onChange={(e) => setManualStartArticle(e.target.value)}
-                        className="w-20 px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-900 font-mono text-xs font-bold text-center focus:ring-2 focus:ring-indigo-500 focus:outline-none shadow-xs"
-                      />
-                      <span className="text-[11px] text-slate-500">em diante</span>
-                    </div>
+                    {hasArticle ? (
+                      <div className="flex items-center gap-2">
+                        <label htmlFor="input-manual-start-art" className="text-xs font-semibold text-slate-700 whitespace-nowrap">
+                          Continuar do Artigo:
+                        </label>
+                        <input
+                          id="input-manual-start-art"
+                          type="number"
+                          min={1}
+                          value={manualStartArticle || defaultNextArt}
+                          onChange={(e) => setManualStartArticle(e.target.value)}
+                          className="w-20 px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-900 font-mono text-xs font-bold text-center focus:ring-2 focus:ring-indigo-500 focus:outline-none shadow-xs"
+                        />
+                        <span className="text-[11px] text-slate-500">em diante</span>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-slate-600 flex items-center gap-1.5 font-medium">
+                        <BookOpen className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Pronto para continuar a partir de: <strong>{status.lastTopic ? `"${status.lastTopic.slice(0, 35)}..."` : 'próximo bloco'}</strong></span>
+                      </div>
+                    )}
 
                     <div className="flex flex-wrap items-center gap-2">
                       {/* Step-by-step next batch button */}
                       <button
                         type="button"
                         id="btn-process-next-chapter"
-                        onClick={() => handleProcessNextChapter(currentInputStart)}
+                        onClick={() => handleProcessNextChapter(hasArticle ? currentInputStart : undefined)}
                         disabled={isProcessingPdf || isAutoProcessing}
                         className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs transition-colors shrink-0 shadow-xs flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
                       >
                         {isProcessingPdf && !isAutoProcessing ? (
                           <>
                             <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            <span>Processando Art. {currentInputStart} em diante...</span>
+                            <span>{hasArticle ? `Processando Art. ${currentInputStart} em diante...` : 'Processando próximo lote...'}</span>
                           </>
                         ) : (
                           <>
-                            <span>Processar a partir do Art. {currentInputStart}</span>
+                            <span>{hasArticle ? `Processar a partir do Art. ${currentInputStart}` : 'Processar Próximo Lote'}</span>
                             <ArrowRight className="w-3.5 h-3.5" />
                           </>
                         )}
@@ -2527,7 +2707,7 @@ export const StudyMaterialView: React.FC<StudyMaterialViewProps> = ({
                         <button
                           type="button"
                           id="btn-auto-process-until-finished"
-                          onClick={handleAutoProcessUntilFinished}
+                          onClick={() => handleAutoProcessUntilFinished()}
                           disabled={isProcessingPdf}
                           className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold text-xs transition-all shrink-0 shadow-xs flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
                           title="Processa em lotes subsequentes de forma automatizada até que o arquivo PDF seja 100% concluído"
