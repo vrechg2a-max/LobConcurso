@@ -2761,6 +2761,7 @@ export const StudyMaterialView: React.FC<StudyMaterialViewProps> = ({
                 </span>
               </button>
             </div>
+          </div>
 
             {/* Error or Success banners for Question Generation */}
             {generationError && (
