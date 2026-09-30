@@ -886,19 +886,33 @@ app.post('/api/generate-flashcards', async (req, res) => {
 
     const cleanContent = (text: string) => {
       if (!text) return '';
-      if (!text.includes('<html') && !text.includes('<div') && !text.includes('<!DOCTYPE')) {
-        return text.trim();
+      let cleaned = String(text);
+      if (cleaned.includes('<html') || cleaned.includes('<div') || cleaned.includes('<!DOCTYPE')) {
+        cleaned = cleaned
+          .replace(/<style[\s\S]*?<\/style>/gi, '')
+          .replace(/<script[\s\S]*?<\/script>/gi, '')
+          .replace(/<div class=["']header-banner["'][\s\S]*?<\/div>/gi, '')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&quot;/g, '"');
       }
-      return text
-        .replace(/<style[\s\S]*?<\/style>/gi, '')
-        .replace(/<script[\s\S]*?<\/script>/gi, '')
-        .replace(/<div class=["']header-banner["'][\s\S]*?<\/div>/gi, '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
+      return cleaned
+        .replace(/\bcite:\s*\d+\b/gi, '')
+        .replace(/\[\s*cite:\s*\d+\s*\]/gi, '')
+        .replace(/\(\s*cite:\s*\d+\s*\)/gi, '')
+        .replace(/\b([BCDFGHJKLMNPQRSTVWXYZ])\s+([a-záéíóúâêôãõç]{2,})\b/g, '$1$2')
+        .replace(/\bA\s+tividade\b/gi, 'Atividade')
+        .replace(/\bA\s+utor\b/gi, 'Autor')
+        .replace(/\bA\s+umento\b/gi, 'Aumento')
+        .replace(/\bI\s+mputab/gi, 'Imputab')
+        .replace(/\bT\s+eoria\b/gi, 'Teoria')
+        .replace(/\bC\s+rime\b/gi, 'Crime')
+        .replace(/\bP\s+ena\b/gi, 'Pena')
+        .replace(/\bT\s+empo\b/gi, 'Tempo')
+        .replace(/\bL\s+ugar\b/gi, 'Lugar')
         .replace(/\s{2,}/g, ' ')
         .trim();
     };
@@ -3302,7 +3316,20 @@ app.post('/api/generate-questions', async (req, res) => {
         .replace(/\[(?:LEGISLAÇÃO|DOCUMENTO) CONCLUÍDO NA ÍNTEGRA\]/gi, '')
         .replace(/\[TEXTO DE ESTUDO[^\]]*\]/gi, '')
         .replace(/\[SUMÁRIO ESTRATÉGICO[^\]]*\]/gi, '')
-        .replace(/(?:^|\n)\s*(?:🧠|💡|⚡|📌|🎯)?\s*(?:MNEM[OÔ]NICO|DICA\s+DE\s+MEMORIZA[ÇC][ÃA]O|BIZU\s+T[AÁ]TICO)[^:\n]*:?[^\n]*/gi, '');
+        .replace(/(?:^|\n)\s*(?:🧠|💡|⚡|📌|🎯)?\s*(?:MNEM[OÔ]NICO|DICA\s+DE\s+MEMORIZA[ÇC][ÃA]O|BIZU\s+T[AÁ]TICO)[^:\n]*:?[^\n]*/gi, '')
+        .replace(/\bcite:\s*\d+\b/gi, '')
+        .replace(/\[\s*cite:\s*\d+\s*\]/gi, '')
+        .replace(/\(\s*cite:\s*\d+\s*\)/gi, '')
+        .replace(/\b([BCDFGHJKLMNPQRSTVWXYZ])\s+([a-záéíóúâêôãõç]{2,})\b/g, '$1$2')
+        .replace(/\bA\s+tividade\b/gi, 'Atividade')
+        .replace(/\bA\s+utor\b/gi, 'Autor')
+        .replace(/\bA\s+umento\b/gi, 'Aumento')
+        .replace(/\bI\s+mputab/gi, 'Imputab')
+        .replace(/\bT\s+eoria\b/gi, 'Teoria')
+        .replace(/\bC\s+rime\b/gi, 'Crime')
+        .replace(/\bP\s+ena\b/gi, 'Pena')
+        .replace(/\bT\s+empo\b/gi, 'Tempo')
+        .replace(/\bL\s+ugar\b/gi, 'Lugar');
       return cleaned
         .replace(/[ \t]+/g, ' ')
         .replace(/\n{3,}/g, '\n\n')
@@ -3437,28 +3464,24 @@ app.post('/api/generate-questions', async (req, res) => {
 
       const totalUnits = units.length;
       const slices: DocumentSlice[] = [];
-      const unitShift = existingCount > 0 ? (existingCount * 2) % Math.max(1, totalUnits) : 0;
 
       for (let zIdx = 0; zIdx < effectiveCount; zIdx++) {
         const zoneStartFrac = zIdx / effectiveCount;
         const zoneEndFrac = (zIdx + 1) / effectiveCount;
 
-        const rawStart = (Math.floor(zoneStartFrac * totalUnits) + unitShift) % totalUnits;
-        const rawEnd = (Math.floor(zoneEndFrac * totalUnits) + unitShift) % totalUnits;
+        const rawStart = Math.min(totalUnits - 1, Math.floor(zoneStartFrac * totalUnits));
+        const rawEnd = Math.max(rawStart + 1, Math.min(totalUnits, Math.ceil(zoneEndFrac * totalUnits)));
 
-        let zoneUnits: string[];
-        if (rawStart < rawEnd) {
-          zoneUnits = units.slice(rawStart, rawEnd);
-        } else if (rawStart > rawEnd) {
-          zoneUnits = [...units.slice(rawStart), ...units.slice(0, rawEnd)];
-        } else {
-          zoneUnits = [units[rawStart] || units[0]];
-        }
+        let zoneUnits = units.slice(rawStart, rawEnd);
         if (zoneUnits.length === 0) {
           zoneUnits = [units[rawStart] || units[0]];
         }
 
-        const zoneContent = zoneUnits.join('\n\n---\n\n').trim();
+        // Limit each zone's text to max 3500 chars to prevent prompt bloat while retaining complete articles
+        let zoneContent = zoneUnits.join('\n\n---\n\n').trim();
+        if (zoneContent.length > 3500) {
+          zoneContent = zoneContent.slice(0, 3500) + '...';
+        }
 
         // Extract first heading or key phrase from the zone content (strictly clean text)
         const firstLines = zoneUnits
@@ -3469,9 +3492,24 @@ app.post('/api/generate-questions', async (req, res) => {
           })
           .filter((l) => l.length > 3 && !l.startsWith('MAPA TÁTICO:') && !l.includes('---'));
 
-        let primaryHeading = firstLines[0] || `Tópico ${((zIdx + existingCount) % totalUnits) + 1}`;
-        // Strip any residual HTML tags or square brackets
-        primaryHeading = primaryHeading.replace(/<[^>]+>/g, '').replace(/[\[\]]/g, '').trim();
+        let primaryHeading = firstLines[0] || `Tópico ${zIdx + 1}`;
+        // Strip any residual HTML tags, citations or square brackets
+        primaryHeading = primaryHeading
+          .replace(/\bcite:\s*\d+/gi, '')
+          .replace(/<[^>]+>/g, '')
+          .replace(/[\[\]\(\)]/g, '')
+          .replace(/=\s*/g, ' - ')
+          .replace(/\b([BCDFGHJKLMNPQRSTVWXYZ])\s+([a-záéíóúâêôãõç]{2,})\b/g, '$1$2')
+          .replace(/\bA\s+tividade\b/gi, 'Atividade')
+          .replace(/\bA\s+utor\b/gi, 'Autor')
+          .replace(/\bT\s+eoria\b/gi, 'Teoria')
+          .replace(/\bC\s+rime\b/gi, 'Crime')
+          .replace(/\bP\s+ena\b/gi, 'Pena')
+          .replace(/\bT\s+empo\b/gi, 'Tempo')
+          .replace(/\bL\s+ugar\b/gi, 'Lugar')
+          .replace(/\s+/g, ' ')
+          .trim();
+
         if (primaryHeading.length > 55) {
           primaryHeading = primaryHeading.slice(0, 55).trim() + '...';
         }
@@ -3523,8 +3561,22 @@ app.post('/api/generate-questions', async (req, res) => {
             return /\b(é|são|será|serão|deve|devem|não|vedado|garantido|assegurado|constitui|salvo|inviolável|compete|autorizado|dispensado|proibido|facultado|independe|mediante|sujeito|assegura|apropriar|exigir|solicitar|receber|praticar|deixar|retardar)\b/i.test(s);
           });
 
-        const topicName = (slice.regionTitle || '').replace(/[\[\]]/g, '').trim();
-        const displayTopic = topicName && !topicName.startsWith('Tópico') && !topicName.includes('TEXTO DE ESTUDO') ? topicName : title;
+        const rawTopic = (slice.regionTitle || '')
+          .replace(/\bcite:\s*\d+/gi, '')
+          .replace(/<[^>]+>/g, '')
+          .replace(/[\[\]\(\)]/g, '')
+          .replace(/=\s*/g, ' - ')
+          .replace(/\b([BCDFGHJKLMNPQRSTVWXYZ])\s+([a-záéíóúâêôãõç]{2,})\b/g, '$1$2')
+          .replace(/\bA\s+tividade\b/gi, 'Atividade')
+          .replace(/\bA\s+utor\b/gi, 'Autor')
+          .replace(/\bT\s+eoria\b/gi, 'Teoria')
+          .replace(/\bC\s+rime\b/gi, 'Crime')
+          .replace(/\bP\s+ena\b/gi, 'Pena')
+          .replace(/\bT\s+empo\b/gi, 'Tempo')
+          .replace(/\bL\s+ugar\b/gi, 'Lugar')
+          .replace(/\s+/g, ' ')
+          .trim();
+        const displayTopic = rawTopic && !rawTopic.startsWith('Tópico') && !rawTopic.includes('TEXTO DE ESTUDO') ? rawTopic : title;
 
         const lawRefMatch =
           zoneText.match(/(?:Art\.?|Artigo)\s*\d+[º\w\.\-]*(?:\s*,\s*(?:inciso|parágrafo|§)\s*[\w\dº]+)?/i) ||
@@ -3590,14 +3642,16 @@ app.post('/api/generate-questions', async (req, res) => {
             const otherSentIdx = (sentIdx + dIdx) % Math.max(1, candidateSentences.length);
             const otherSent = candidateSentences[otherSentIdx];
             if (otherSent && otherSent !== representativeSentence) {
-              // Inverte a proposição para formar um distrator técnico realista
               const inverted = otherSent
                 .replace(/\bdeve\b/gi, 'é facultado')
                 .replace(/\bobrigatório\b/gi, 'dispensável')
                 .replace(/\bvedado\b/gi, 'expressamente permitido')
                 .replace(/\bindepende\b/gi, 'depende de prévia autorização judicial')
-                .replace(/\bprivativa\b/gi, 'concorrente');
-              distractorPool.push(inverted !== otherSent ? inverted : `É defeso à autoridade competente: ${otherSent}`);
+                .replace(/\bprivativa\b/gi, 'concorrente')
+                .replace(/\bnão se aplica\b/gi, 'aplica-se irrestritamente');
+              if (inverted !== otherSent) {
+                distractorPool.push(inverted);
+              }
             }
           }
 
@@ -3614,14 +3668,14 @@ app.post('/api/generate-questions', async (req, res) => {
             if (letter === correctLetter) {
               return {
                 id: letter,
-                text: sanitizeStructuredOptionText(representativeSentence, `Disposição em conformidade com ${displayTopic}.`),
+                text: sanitizeStructuredOptionText(representativeSentence, `Disposição em conformidade com as normas de ${displayTopic}.`),
               };
             }
-            const dText = distractorPool[usedDistractorIdx % distractorPool.length] || `Inaplicável aos preceitos de ${displayTopic}.`;
+            const dText = distractorPool[usedDistractorIdx % distractorPool.length] || topicFallbacks[usedDistractorIdx % topicFallbacks.length] || `Incompatível com o regramento positivo vigente de ${displayTopic}.`;
             usedDistractorIdx++;
             return {
               id: letter,
-              text: sanitizeStructuredOptionText(dText, `Previsão normativa sujeita a regulamentação própria de ${displayTopic}.`),
+              text: sanitizeStructuredOptionText(dText, `Previsão normativa que contraria as disposições legais aplicáveis a ${displayTopic}.`),
             };
           });
 
@@ -5263,21 +5317,37 @@ ${chunkFormattedSectionsText}`;
       allGeneratedQuestions = chunkResults.flat();
     } else if (!isGeneralSimulado && questionCount > 5) {
       // Single material with 10 or 15 items requested:
-      // Partition the ENTIRE document text into questionCount contiguous zones spanning 100% of the law
+      // Divide into parallel sub-batches of 5 questions each to guarantee 100% breadth, zero timeout, and zero truncation!
       const rawDocText = targetSummaries[0]?.summaryText || targetSummaries[0]?.sampleText || targetSummaries[0]?.title || '';
-      const allSlices = partitionDocumentAcrossBreadth(rawDocText, questionCount, existingForContext.length);
+      const allSlices = partitionDocumentAcrossBreadth(rawDocText, questionCount, 0);
 
-      console.log(`[Questions Service] Gerando ${questionCount} questões para "${sourceSummaryTitle}" em chamada estruturada única cobrindo ${allSlices.length} zonas (100% da extensão da lei)...`);
+      const batchSize = 5;
+      const subBatches: Array<{ slices: DocumentSlice[]; batchIdx: number; focus: string }> = [];
 
-      allGeneratedQuestions = await generateQuestionsForChunk(
-        targetSummaries,
-        false,
-        0,
-        questionCount,
-        `Varredura estrutural de 100% do diploma legal: Elabore rigorosamente ${questionCount} questões inéditas, gerando exatamente 1 questão para cada uma das ${allSlices.length} Zonas demarcadas abaixo, cobrindo todo o diploma do início ao fim sem sobreposição.`,
-        allSlices,
-        existingForContext
+      for (let b = 0; b < allSlices.length; b += batchSize) {
+        const batchSlices = allSlices.slice(b, b + batchSize);
+        const startPct = Math.round((b / allSlices.length) * 100);
+        const endPct = Math.round(((b + batchSlices.length) / allSlices.length) * 100);
+        const focusLabel = `Lote #${Math.floor(b / batchSize) + 1} (${startPct}% a ${endPct}% do diploma legal - Zonas #${b + 1} a #${b + batchSlices.length}): Elabore rigorosamente ${batchSlices.length} questões inéditas, 1 para cada Zona deste segmento sequencial, cobrindo com profundidade os artigos e temas deste trecho.`;
+        subBatches.push({ slices: batchSlices, batchIdx: Math.floor(b / batchSize), focus: focusLabel });
+      }
+
+      console.log(`[Questions Service] Executando ${subBatches.length} sublotes paralelos para cobrir 100% da extensão (${questionCount} questões)...`);
+
+      const batchPromises = subBatches.map((sb) =>
+        generateQuestionsForChunk(
+          targetSummaries,
+          false,
+          sb.batchIdx,
+          sb.slices.length,
+          sb.focus,
+          sb.slices,
+          existingForContext
+        )
       );
+
+      const batchResults = await Promise.all(batchPromises);
+      allGeneratedQuestions = batchResults.flat();
     } else {
       // Single material or small multi-material set with <= 5 items
       let singleSlices: DocumentSlice[] | undefined = undefined;

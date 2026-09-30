@@ -19,8 +19,10 @@ import {
   Zap,
   Flame,
   Settings,
+  RotateCcw,
+  ChevronDown,
 } from 'lucide-react';
-import { PerformanceMetrics, User, StudyMaterial, Question, Flashcard } from '../types';
+import { PerformanceMetrics, User, StudyMaterial, Question, Flashcard, ActivityLog } from '../types';
 import { MascotAvatar } from './MascotAvatar';
 import {
   calculateConcurseiroGamification,
@@ -35,10 +37,12 @@ interface DashboardViewProps {
   materials: StudyMaterial[];
   questions?: Question[];
   flashcards?: Flashcard[];
+  activities?: ActivityLog[];
   onNavigate: (tab: 'materials' | 'questions' | 'flashcards' | 'edital') => void;
   onUpdateUser: (userData: Partial<User>) => Promise<void>;
   onOpenBackupModal?: () => void;
   onOpenMobileModal?: () => void;
+  onClearHistory?: () => Promise<void> | void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -47,10 +51,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   materials,
   questions,
   flashcards,
+  activities,
   onNavigate,
   onUpdateUser,
   onOpenBackupModal,
   onOpenMobileModal,
+  onClearHistory,
 }) => {
   const [isEditingExam, setIsEditingExam] = useState(false);
   const [targetExamInput, setTargetExamInput] = useState(user?.targetExam || 'Carreira Jurídica / Fiscal');
@@ -99,6 +105,163 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const daysUntilExam = user?.targetDate
     ? Math.max(0, Math.ceil((new Date(user.targetDate).getTime() - new Date().getTime()) / (1000 * 3600 * 24)))
     : null;
+
+  // Raio-X Performance & Period Filtering State
+  type PeriodPreset = 'today' | '7d' | '30d' | 'custom';
+  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('7d');
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
+  const [tempStartDate, setTempStartDate] = useState<string>('');
+  const [tempEndDate, setTempEndDate] = useState<string>('');
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+
+  // Calculate start and end date of chosen period
+  const { startDate, endDate, dateRangeLabel } = useMemo(() => {
+    const now = new Date();
+    let start: Date;
+    let end: Date = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    let label = 'Últimos 7 dias';
+
+    if (periodPreset === 'today') {
+      start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+      label = 'Hoje';
+    } else if (periodPreset === '7d') {
+      start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6, 0, 0, 0);
+      label = 'Últimos 7 dias';
+    } else if (periodPreset === '30d') {
+      start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29, 0, 0, 0);
+      label = 'Últimos 30 dias';
+    } else {
+      // custom
+      if (customStartDate) {
+        start = new Date(customStartDate + 'T00:00:00');
+      } else {
+        start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6, 0, 0, 0);
+      }
+      if (customEndDate) {
+        end = new Date(customEndDate + 'T23:59:59');
+      }
+      const sStr = start.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+      const eStr = end.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+      label = customStartDate && customEndDate ? `${sStr} - ${eStr}` : 'Personalizado';
+    }
+
+    return { startDate: start, endDate: end, dateRangeLabel: label };
+  }, [periodPreset, customStartDate, customEndDate]);
+
+  // Gather all question resolutions within the chosen period
+  const filteredResolutions = useMemo(() => {
+    const records: Array<{ id: string; date: Date; isCorrect: boolean; hasCommentary: boolean }> = [];
+    const questionActivities = (activities || metrics?.recentActivity || []).filter((a) => a.action === 'question');
+
+    for (const a of questionActivities) {
+      records.push({
+        id: a.id,
+        date: new Date(a.date),
+        isCorrect: !!a.isCorrect,
+        hasCommentary: true,
+      });
+    }
+
+    // Supplement answered questions if activities are fewer than attempts
+    if (questions && questions.length > 0) {
+      const answeredQuestions = questions.filter((q) => q.attempts > 0);
+      if (records.length < answeredQuestions.length) {
+        for (const q of answeredQuestions) {
+          const already = records.some((r) => r.id === `q-res-${q.id}` || r.id === q.id);
+          if (!already) {
+            records.push({
+              id: `q-res-${q.id}`,
+              date: q.createdAt ? new Date(q.createdAt) : new Date(),
+              isCorrect: q.userLastResult === 'correct' || q.correctAttempts > 0,
+              hasCommentary: !!(q.explanation && q.explanation.length > 10),
+            });
+          }
+        }
+      }
+    }
+
+    return records.filter((r) => r.date >= startDate && r.date <= endDate);
+  }, [activities, metrics?.recentActivity, questions, startDate, endDate]);
+
+  // Compute stats (Total, Certas, Erradas, Taxa, Comentadas)
+  const filteredStats = useMemo(() => {
+    const total = filteredResolutions.length;
+    const correct = filteredResolutions.filter((r) => r.isCorrect).length;
+    const wrong = total - correct;
+    const accuracy = total > 0 ? ((correct / total) * 100).toFixed(2) : '0.00';
+    const commented = filteredResolutions.filter((r) => r.hasCommentary).length;
+
+    return { total, correct, wrong, accuracy, commented };
+  }, [filteredResolutions]);
+
+  // Daily Chart Buckets for Multi-Bar Chart
+  const dailyChartData = useMemo(() => {
+    const daysMap = new Map<string, { label: string; dateStr: string; total: number; correct: number; wrong: number }>();
+    const diffDays = Math.max(1, Math.min(31, Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 3600 * 24))));
+
+    for (let i = 0; i < diffDays; i++) {
+      const d = new Date(startDate.getTime() + i * 24 * 3600 * 1000);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const weekday = d.toLocaleDateString('pt-BR', { weekday: 'short' });
+      const dayMonth = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+      daysMap.set(key, {
+        label: diffDays <= 7 ? `${weekday} ${dayMonth.slice(0, 2)}` : dayMonth,
+        dateStr: key,
+        total: 0,
+        correct: 0,
+        wrong: 0,
+      });
+    }
+
+    for (const r of filteredResolutions) {
+      const key = `${r.date.getFullYear()}-${String(r.date.getMonth() + 1).padStart(2, '0')}-${String(r.date.getDate()).padStart(2, '0')}`;
+      const bucket = daysMap.get(key);
+      if (bucket) {
+        bucket.total += 1;
+        if (r.isCorrect) bucket.correct += 1;
+        else bucket.wrong += 1;
+      }
+    }
+
+    const list = Array.from(daysMap.values());
+    const maxVal = Math.max(10, ...list.map((d) => d.total));
+    const yMax = Math.ceil(maxVal / 10) * 10;
+    const yTicks = [yMax, Math.round(yMax * 0.75), Math.round(yMax * 0.5), Math.round(yMax * 0.25), 0];
+
+    return { list, yMax, yTicks };
+  }, [startDate, endDate, filteredResolutions]);
+
+  // Donut Chart data for Percentual de rendimento
+  const donutData = useMemo(() => {
+    const { total, correct, wrong } = filteredStats;
+    const correctPct = total > 0 ? (correct / total) * 100 : 0;
+    const wrongPct = total > 0 ? (wrong / total) * 100 : 0;
+    const radius = 58;
+    const circumference = 2 * Math.PI * radius; // ~364.42
+    const correctDash = (correctPct / 100) * circumference;
+    const wrongDash = (wrongPct / 100) * circumference;
+
+    return {
+      total,
+      correctPct: correctPct.toFixed(1),
+      wrongPct: wrongPct.toFixed(1),
+      circumference,
+      correctDash,
+      wrongDash,
+    };
+  }, [filteredStats]);
+
+  const handleApplyCustomRange = () => {
+    if (tempStartDate && tempEndDate) {
+      setCustomStartDate(tempStartDate);
+      setCustomEndDate(tempEndDate);
+      setPeriodPreset('custom');
+      setIsDatePickerOpen(false);
+    }
+  };
 
   return (
     <div id="dashboard-view" className="space-y-6 max-w-7xl mx-auto pb-12">
@@ -213,6 +376,284 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             >
               <Sparkles className="w-4 h-4 text-indigo-200" />
               <span>Gerar Questões</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Raio-X de Desempenho Geral & Percentual de Rendimento (Conforme Especificação Visual) */}
+      <div id="raiox-desempenho-geral" className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        {/* Card Esquerdo: Desempenho Geral (3 cols no desktop) */}
+        <div className="lg:col-span-3 bg-white border border-slate-200 rounded-2xl p-6 shadow-xs flex flex-col justify-between">
+          <div>
+            {/* Header: Título à esquerda, controles de período à direita */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4">
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+                Desempenho Geral
+              </h2>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Botão Selecione o período 📅 */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    id="btn-select-period"
+                    onClick={() => setIsDatePickerOpen(!isDatePickerOpen)}
+                    className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 bg-white text-xs font-medium text-slate-600 shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <span>{periodPreset === 'custom' && customStartDate && customEndDate ? dateRangeLabel : 'Selecione o período'}</span>
+                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                  </button>
+
+                  {isDatePickerOpen && (
+                    <div className="absolute right-0 top-full mt-2 w-72 bg-white rounded-xl shadow-xl border border-slate-200 p-4 z-50 text-xs animate-in fade-in zoom-in-95">
+                      <div className="font-semibold text-slate-800 mb-2">Intervalo Personalizado</div>
+                      <div className="space-y-2">
+                        <div>
+                          <label className="text-[11px] text-slate-500 block mb-1">Data Inicial:</label>
+                          <input
+                            type="date"
+                            value={tempStartDate}
+                            onChange={(e) => setTempStartDate(e.target.value)}
+                            className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] text-slate-500 block mb-1">Data Final:</label>
+                          <input
+                            type="date"
+                            value={tempEndDate}
+                            onChange={(e) => setTempEndDate(e.target.value)}
+                            className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-2 mt-3 pt-2 border-t border-slate-100">
+                        <button
+                          type="button"
+                          onClick={() => setIsDatePickerOpen(false)}
+                          className="px-3 py-1 rounded-lg text-slate-500 hover:bg-slate-100 text-xs cursor-pointer"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleApplyCustomRange}
+                          className="px-3 py-1 rounded-lg bg-indigo-600 text-white font-semibold text-xs hover:bg-indigo-700 shadow-2xs cursor-pointer"
+                        >
+                          Aplicar
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Dropdown de Presets: Hoje, Últimos 7 dias, Últimos 30 dias */}
+                <div className="relative">
+                  <select
+                    id="select-period-preset"
+                    value={periodPreset}
+                    onChange={(e) => {
+                      const val = e.target.value as PeriodPreset;
+                      setPeriodPreset(val);
+                      if (val === 'custom') {
+                        setIsDatePickerOpen(true);
+                      }
+                    }}
+                    className="appearance-none pl-3 pr-8 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-700 hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs cursor-pointer"
+                  >
+                    <option value="today">Hoje</option>
+                    <option value="7d">Últimos 7 dias</option>
+                    <option value="30d">Últimos 30 dias</option>
+                    <option value="custom">Personalizado</option>
+                  </select>
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+              </div>
+            </div>
+
+            {/* Linha das 5 Métricas */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 py-4 border-t border-slate-100">
+              <div>
+                <div className="text-xs text-slate-500 font-normal">Total de Resoluções</div>
+                <div className="text-2xl sm:text-3xl font-normal text-blue-600 mt-1 font-mono tracking-tight">
+                  {filteredStats.total}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500 font-normal">Resoluções Certas</div>
+                <div className="text-2xl sm:text-3xl font-normal text-emerald-500 mt-1 font-mono tracking-tight">
+                  {filteredStats.correct}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500 font-normal">Resoluções Erradas</div>
+                <div className="text-2xl sm:text-3xl font-normal text-red-500 mt-1 font-mono tracking-tight">
+                  {filteredStats.wrong}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500 font-normal">Taxa de Acerto</div>
+                <div className="text-2xl sm:text-3xl font-normal text-indigo-600 mt-1 font-mono tracking-tight">
+                  {filteredStats.accuracy}%
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500 font-normal">Questões Comentadas</div>
+                <div className="text-2xl sm:text-3xl font-normal text-amber-500 mt-1 font-mono tracking-tight">
+                  {filteredStats.commented}
+                </div>
+              </div>
+            </div>
+
+            {/* Gráfico de Barras Multi-Bar */}
+            <div className="mt-4 pt-2">
+              <div className="relative h-48 w-full flex items-end">
+                {/* Linhas de Grade e Eixo Y */}
+                <div className="absolute inset-0 flex flex-col justify-between pointer-events-none pb-6">
+                  {dailyChartData.yTicks.map((tick, idx) => (
+                    <div key={idx} className="flex items-center w-full">
+                      <span className="text-[10px] text-slate-400 font-mono w-6 text-right pr-2 shrink-0">
+                        {tick}
+                      </span>
+                      <div className="w-full border-b border-slate-100" />
+                    </div>
+                  ))}
+                </div>
+
+                {/* Colunas do Gráfico com Barras Duplas (Verde para Certas e Azul para Total) */}
+                <div className="relative w-full h-full flex items-end pl-8 pb-6 gap-2 sm:gap-4">
+                  {dailyChartData.list.map((day, idx) => {
+                    const greenHeightPct = dailyChartData.yMax > 0 && day.correct > 0
+                      ? Math.max(4, Math.round((day.correct / dailyChartData.yMax) * 100))
+                      : 0;
+                    const blueHeightPct = dailyChartData.yMax > 0 && day.total > 0
+                      ? Math.max(4, Math.round((day.total / dailyChartData.yMax) * 100))
+                      : 0;
+
+                    return (
+                      <div
+                        key={idx}
+                        className="flex-1 h-full flex flex-col justify-end items-center group relative cursor-pointer"
+                      >
+                        {/* Tooltip ao passar o mouse */}
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute bottom-full mb-2 bg-slate-900 text-white text-[11px] rounded-lg py-1.5 px-2.5 pointer-events-none z-30 whitespace-nowrap shadow-lg">
+                          <div className="font-semibold text-slate-200">{day.dateStr}</div>
+                          <div className="text-emerald-400">Certas: {day.correct}</div>
+                          <div className="text-blue-400">Total: {day.total}</div>
+                          {day.total > 0 && (
+                            <div className="text-slate-300">
+                              Aproveitamento: {((day.correct / day.total) * 100).toFixed(0)}%
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Par de Barras: Verde (Certas) e Azul (Total) */}
+                        <div className="w-full flex items-end justify-center gap-1 h-full">
+                          {/* Barra Verde (Resoluções Certas) */}
+                          <div
+                            className="w-1/2 max-w-[28px] bg-emerald-500 rounded-t-xs transition-all duration-500 group-hover:bg-emerald-600"
+                            style={{ height: `${greenHeightPct}%` }}
+                          />
+                          {/* Barra Azul (Total de Resoluções) */}
+                          <div
+                            className="w-1/2 max-w-[28px] bg-blue-600 rounded-t-xs transition-all duration-500 group-hover:bg-blue-700"
+                            style={{ height: `${blueHeightPct}%` }}
+                          />
+                        </div>
+
+                        {/* Rótulo do Dia no Eixo X */}
+                        <span className="absolute -bottom-5 text-[10px] text-slate-400 group-hover:text-slate-700 font-medium truncate max-w-full">
+                          {day.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Card Direito: Percentual de rendimento (1 col no desktop) */}
+        <div className="lg:col-span-1 bg-white border border-slate-200 rounded-2xl p-6 shadow-xs flex flex-col justify-between">
+          <div>
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight text-center pb-2">
+              Percentual de rendimento
+            </h2>
+
+            {/* Donut Chart */}
+            <div className="relative flex items-center justify-center my-6">
+              <svg viewBox="0 0 160 160" className="w-44 h-44 transform -rotate-90">
+                <circle cx="80" cy="80" r="58" stroke="#f1f5f9" strokeWidth="26" fill="none" />
+                {donutData.total > 0 ? (
+                  <>
+                    {/* Arco Verde (Acertos) */}
+                    <circle
+                      cx="80"
+                      cy="80"
+                      r="58"
+                      stroke="#10b981"
+                      strokeWidth="26"
+                      fill="none"
+                      strokeDasharray={`${donutData.correctDash} ${donutData.circumference}`}
+                    />
+                    {/* Arco Vermelho (Erros) */}
+                    <circle
+                      cx="80"
+                      cy="80"
+                      r="58"
+                      stroke="#ef4444"
+                      strokeWidth="26"
+                      fill="none"
+                      strokeDasharray={`${donutData.wrongDash} ${donutData.circumference}`}
+                      strokeDashoffset={-donutData.correctDash}
+                    />
+                  </>
+                ) : (
+                  <circle cx="80" cy="80" r="58" stroke="#e2e8f0" strokeWidth="26" fill="none" />
+                )}
+              </svg>
+
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                {donutData.total > 0 ? (
+                  <>
+                    <span className="text-2xl font-black text-slate-900 font-mono">
+                      {donutData.correctPct}%
+                    </span>
+                    <span className="text-[10px] text-slate-400 uppercase font-semibold">
+                      Acertos
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-xs text-slate-400 font-medium">Sem dados</span>
+                )}
+              </div>
+            </div>
+
+            {/* Legenda: Acertos (Verde) e Erros (Vermelho) */}
+            <div className="flex items-center justify-center gap-4 text-xs text-slate-600">
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-xs bg-[#10b981]" />
+                <span className="text-slate-600 font-medium">Acertos</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-xs bg-[#ef4444]" />
+                <span className="text-slate-600 font-medium">Erros</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Botão Limpar Histórico de Desempenho */}
+          <div className="mt-6 pt-4 border-t border-slate-100">
+            <button
+              type="button"
+              id="btn-clear-performance-history"
+              onClick={() => setShowClearConfirm(true)}
+              className="w-full py-2.5 px-3 rounded-xl border border-amber-200/80 bg-amber-50/40 hover:bg-amber-100/60 text-amber-600 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-amber-500" />
+              <span>Limpar histórico de desempenho</span>
             </button>
           </div>
         </div>
@@ -769,6 +1210,50 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </span>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação para Limpar Histórico de Desempenho */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+                <RotateCcw className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Limpar Histórico de Desempenho</h3>
+                <p className="text-xs text-slate-500">Zerar resoluções e histórico estatístico</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Tem certeza de que deseja limpar seu histórico de desempenho? Isso zerará o registro de resoluções, acertos e estatísticas no seu navegador. As questões e seus resumos permanecerão salvos.
+            </p>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowClearConfirm(false)}
+                className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isClearing}
+                onClick={async () => {
+                  setIsClearing(true);
+                  if (onClearHistory) await onClearHistory();
+                  setIsClearing(false);
+                  setShowClearConfirm(false);
+                }}
+                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold shadow-xs cursor-pointer transition-colors"
+              >
+                {isClearing ? 'Limpando...' : 'Sim, Limpar Histórico'}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -177,7 +177,7 @@ export function computePerformanceMetrics(
     flashcardsMastered,
     totalSummaries: materials.length,
     studyStreakDays: Math.max(1, Math.min(30, activities.length ? 5 : 1)),
-    recentActivity: sortedActivities.slice(0, 15),
+    recentActivity: sortedActivities.slice(0, 300),
   };
 }
 
@@ -506,6 +506,7 @@ export async function initializeIndexedDB(): Promise<{
   questions: Question[];
   flashcards: Flashcard[];
   metrics: PerformanceMetrics;
+  activities: ActivityLog[];
 }> {
   const materialsCount = await db.materials.count();
 
@@ -628,6 +629,7 @@ export async function initializeIndexedDB(): Promise<{
     questions: deduplicatedQuestions,
     flashcards: storedFlashcards,
     metrics,
+    activities: storedActivities,
   };
 }
 

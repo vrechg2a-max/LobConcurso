@@ -42,6 +42,7 @@ export default function App() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
   const [metrics, setMetrics] = useState<PerformanceMetrics | null>(null);
+  const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const [preselectedMaterialId, setPreselectedMaterialId] = useState<string | null>(null);
@@ -63,6 +64,7 @@ export default function App() {
         setQuestions(data.questions);
         setFlashcards(data.flashcards);
         setMetrics(data.metrics);
+        setActivities(data.activities || []);
         setIsLoading(false);
       })
       .catch((err) => {
@@ -498,6 +500,7 @@ export default function App() {
         isCorrect,
       };
       await db.activities.add(activity);
+      setActivities((prev) => [activity, ...prev]);
 
       const recent = [activity, ...(metrics?.recentActivity || [])];
       refreshMetrics(materials, updatedQuestions, flashcards, recent);
@@ -510,6 +513,28 @@ export default function App() {
       correctAnswer: targetQ.correctAnswer,
       explanation: targetQ.explanation,
     };
+  };
+
+  // Clear performance history (Reset attempts and activities)
+  const handleClearPerformanceHistory = async () => {
+    try {
+      const resetQuestions = questions.map((q) => ({
+        ...q,
+        attempts: 0,
+        correctAttempts: 0,
+        userLastAnswer: undefined,
+        userLastResult: undefined,
+      }));
+      await db.questions.bulkPut(resetQuestions);
+      setQuestions(resetQuestions);
+
+      await db.activities.clear();
+      setActivities([]);
+
+      refreshMetrics(materials, resetQuestions, flashcards, []);
+    } catch (err) {
+      console.error('Erro ao limpar histórico de desempenho:', err);
+    }
   };
 
   // Save Custom Manual Question (Granular IndexedDB mutation)
@@ -921,10 +946,12 @@ export default function App() {
                 materials={materials}
                 questions={questions}
                 flashcards={flashcards}
+                activities={activities}
                 onNavigate={(tab) => setCurrentTab(tab)}
                 onUpdateUser={handleUpdateUser}
                 onOpenBackupModal={() => setIsBackupModalOpen(true)}
                 onOpenMobileModal={() => setIsMobileModalOpen(true)}
+                onClearHistory={handleClearPerformanceHistory}
               />
             )}
 
