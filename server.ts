@@ -193,7 +193,7 @@ Art. 1º a 6º - Da Proteção Integral e Critérios Etários
 
 ALERTA - Marco Temporal Etário: O critério de 12 ANOS INCOMPLETOS é rigorosamente cronológico. No exato dia do 12º aniversário a pessoa passa à condição jurídica de adolescente para todos os efeitos legais.
 
-MNEMÔNICO - 12I - 18 - 21E: 12 Incompletos (Criança) | até 18 (Adolescente) | até 21 Excepcional.
+Critérios Etários Legais: Criança (até 12 anos incompletos); Adolescente (entre 12 e 18 anos); Aplicação excepcional (entre 18 e 21 anos nos casos expressos em lei).
 
 [ÚLTIMO ARTIGO PROCESSADO: Artigo 6]`,
       createdAt: new Date(Date.now() - 86400000 * 3).toISOString(),
@@ -224,7 +224,7 @@ Art. 312 a 316 - Peculato e Concussão
 
 ALERTA - Núcleo Exigir vs Solicitar: Na Concussão a conduta típica é EXIGIR (imposição intimidatória). Na Corrupção Passiva a conduta é SOLICITAR ou RECEBER.
 
-MNEMÔNICO - CON-EXI / PAS-SOL: CONcussão = EXIge | Corrupção PASsiva = SOLicita ou recebe.
+Diferenciação Típica de Condutas: Concussão configura-se pela exigência impositiva da vantagem (verbo exigir); Corrupção Passiva configura-se pela solicitação, recebimento ou aceitação de promessa de vantagem.
 
 [ÚLTIMO ARTIGO PROCESSADO: Artigo 316]`,
       createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
@@ -3220,9 +3220,13 @@ export const sanitizeStructuredQuestionText = (rawText: string, defaultTopic: st
   if (!rawText || typeof rawText !== 'string') return `Acerca de ${defaultTopic}, assinale a afirmativa correta:`;
   let text = rawText.trim();
 
-  // Strip meta-study jargon (mnemônico, mapa tático, esquematização, resumo)
-  text = text.replace(/^(?:considerando|com\s+base\s+n[ao]|conforme|segundo|de\s+acordo\s+com)\s+(?:o\s+mnem[oô]nico|o\s+mapa\s+t[aá]tico|a\s+esquematiza[çc][ãa]o\s+t[aá]tica|o\s+resumo\s+t[aá]tico|o\s+alerta\s+do\s+material|as\s+notas\s+de\s+estudo)[^,:\.\n]*[,:\.\-–]\s*/gi, '');
-  text = text.replace(/^(?:o\s+mnem[oô]nico|a\s+sigla|o\s+mapa\s+t[aá]tico)[^,:\.\n]*[,:\.\-–]\s*/gi, '');
+  // Strip meta-study jargon (mnemônico/mnemônicos, mapa tático, esquematização, resumo)
+  text = text.replace(/^(?:considerando|com\s+base\s+n[ao]s?|conforme|segundo|de\s+acordo\s+com)\s+(?:os?\s+mnem[oô]nicos?|os?\s+mapas?\s+t[aá]ticos?|a\s+esquematiza[çc][ãa]o\s+t[aá]tica|o\s+resumo\s+t[aá]tico|o\s+alerta\s+do\s+material|as\s+notas\s+de\s+estudo)[^,:\.\n]*[,:\.\-–]\s*/gi, '');
+  text = text.replace(/^(?:os?\s+mnem[oô]nicos?|as?\s+siglas?|os?\s+mapas?\s+t[aá]ticos?)[^,:\.\n]*[,:\.\-–]\s*/gi, '');
+  text = text.replace(/\b(?:os?\s+mnem[oô]nicos?)\s*(?:e\s+a\s+estrutura)?\b/gi, 'a estrutura jurídica');
+  text = text.replace(/\bmapas?\s+t[aá]ticos?\b/gi, 'disciplina legal');
+  text = text.replace(/\besquematiza[çc][ãa]o\s+t[aá]tica\b/gi, 'previsão normativa');
+  text = text.replace(/\s{2,}/g, ' ').trim();
 
   if (!text || text.length < 15) {
     text = `Acerca das disposições e preceitos normativos de ${defaultTopic}, assinale a afirmativa correta:`;
@@ -3297,7 +3301,8 @@ app.post('/api/generate-questions', async (req, res) => {
         .replace(/\[ÚLTIMO (?:ARTIGO|TÓPICO) PROCESSADO:[^\]]*\]/gi, '')
         .replace(/\[(?:LEGISLAÇÃO|DOCUMENTO) CONCLUÍDO NA ÍNTEGRA\]/gi, '')
         .replace(/\[TEXTO DE ESTUDO[^\]]*\]/gi, '')
-        .replace(/\[SUMÁRIO ESTRATÉGICO[^\]]*\]/gi, '');
+        .replace(/\[SUMÁRIO ESTRATÉGICO[^\]]*\]/gi, '')
+        .replace(/(?:^|\n)\s*(?:🧠|💡|⚡|📌|🎯)?\s*(?:MNEM[OÔ]NICO|DICA\s+DE\s+MEMORIZA[ÇC][ÃA]O|BIZU\s+T[AÁ]TICO)[^:\n]*:?[^\n]*/gi, '');
       return cleaned
         .replace(/[ \t]+/g, ' ')
         .replace(/\n{3,}/g, '\n\n')
@@ -4996,12 +5001,19 @@ ${chunkFormattedSectionsText}`;
         if (norm.length < 15) continue;
         if (seenBatch.has(norm)) continue;
 
+        const cleanNorm = (str: string) =>
+          normalizeTextForComparison(str)
+            .replace(/^(?:nos\s+termos\s+d[ao]|de\s+acordo\s+com|no\s+tocante\s+a[o]?|no\s+que\s+concerne\s+a[o]?|em\s+conformidade\s+com|acerca\s+d[eo]|em\s+rela[cç][aã]o\s+a[o]?|conforme|segundo|no\s+que\s+tange|julgue\s+o\s+item|assinale\s+a\s+op[cç][aã]o|assinale\s+a\s+afirmativa\s+correta|assinale\s+a\s+alternativa\s+correta|com\s+base\s+n[ao]|considerando)[^,:\.\n]*[,:\.\-–]\s*/gi, '')
+            .replace(/[^a-z0-9]/g, '');
+
+        const cleanCurrent = cleanNorm(q.questionText);
+
         const isDuplicateInDb = (db.questions || []).some((ex) => {
           if (!ex || !ex.questionText) return false;
           const exNorm = normalizeTextForComparison(ex.questionText);
           if (exNorm === norm) return true;
-          // Core sentence match: only reject if the first 100 normalized characters are identical
-          if (norm.length > 50 && exNorm.length > 50 && norm.slice(0, 100) === exNorm.slice(0, 100)) {
+          const exClean = cleanNorm(ex.questionText);
+          if (cleanCurrent.length > 40 && exClean.length > 40 && cleanCurrent.slice(0, 100) === exClean.slice(0, 100)) {
             return true;
           }
           return false;
@@ -5011,6 +5023,16 @@ ${chunkFormattedSectionsText}`;
 
         seenBatch.add(norm);
         validQuestions.push(q);
+      }
+
+      // If deduplication against old database dropped questions below chunkCount, backfill to ensure requested count is fulfilled
+      if (validQuestions.length < chunkCount) {
+        for (const cand of parsed) {
+          if (cand && cand.questionText && !validQuestions.includes(cand)) {
+            validQuestions.push(cand);
+            if (validQuestions.length >= chunkCount) break;
+          }
+        }
       }
 
       const acceptedList = validQuestions.length > 0 ? validQuestions : parsed;
