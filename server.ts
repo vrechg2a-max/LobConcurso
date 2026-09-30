@@ -3626,10 +3626,9 @@ app.post('/api/generate-questions', async (req, res) => {
           });
 
           const questionPromptText = `Considerando as disposições e preceitos normativos de ${title}${displayTopic && displayTopic !== title ? `, no que concerne a ${displayTopic},` : ''} assinale a afirmativa correta:`;
-          const resolvedSubj = resolveExactSubjectTaxonomy(subj, lawRef, questionPromptText, title);
 
-            const synthBoards = ['FGV', 'FCC', 'VUNESP', 'CESGRANRIO', 'IBFC'];
-            const assignedBoard = (examBoard && examBoard !== 'Misto' && examBoard !== 'Todas') ? examBoard : synthBoards[idx % synthBoards.length];
+          const synthBoards = ['FGV', 'FCC', 'VUNESP', 'CESGRANRIO', 'IBFC'];
+          const assignedBoard = (examBoard && examBoard !== 'Misto' && examBoard !== 'Todas') ? examBoard : synthBoards[idx % synthBoards.length];
             return {
               id: `q-synth-${Date.now()}-${matId}-${idx + 1}`,
               userId: db.users[0]?.id || 'usr-default-01',
@@ -4989,6 +4988,11 @@ ${chunkFormattedSectionsText}`;
           .replace(/[^a-z0-9]/g, '')
           .trim();
 
+      const cleanNormForComparison = (str: string) =>
+        normalizeTextForComparison(str)
+          .replace(/^(?:nos\s+termos\s+d[ao]|de\s+acordo\s+com|no\s+tocante\s+a[o]?|no\s+que\s+concerne\s+a[o]?|em\s+conformidade\s+com|acerca\s+d[eo]|em\s+rela[cç][aã]o\s+a[o]?|conforme|segundo|no\s+que\s+tange|julgue\s+o\s+item|assinale\s+a\s+op[cç][aã]o|assinale\s+a\s+afirmativa\s+correta|assinale\s+a\s+alternativa\s+correta|com\s+base\s+n[ao]|considerando)[^,:\.\n]*[,:\.\-–]\s*/gi, '')
+          .replace(/[^a-z0-9]/g, '');
+
       const existingNormalized = (db.questions || []).map((q) => normalizeTextForComparison(q.questionText));
       const seenBatch = new Set<string>();
       const validQuestions: any[] = [];
@@ -5001,18 +5005,13 @@ ${chunkFormattedSectionsText}`;
         if (norm.length < 15) continue;
         if (seenBatch.has(norm)) continue;
 
-        const cleanNorm = (str: string) =>
-          normalizeTextForComparison(str)
-            .replace(/^(?:nos\s+termos\s+d[ao]|de\s+acordo\s+com|no\s+tocante\s+a[o]?|no\s+que\s+concerne\s+a[o]?|em\s+conformidade\s+com|acerca\s+d[eo]|em\s+rela[cç][aã]o\s+a[o]?|conforme|segundo|no\s+que\s+tange|julgue\s+o\s+item|assinale\s+a\s+op[cç][aã]o|assinale\s+a\s+afirmativa\s+correta|assinale\s+a\s+alternativa\s+correta|com\s+base\s+n[ao]|considerando)[^,:\.\n]*[,:\.\-–]\s*/gi, '')
-            .replace(/[^a-z0-9]/g, '');
-
-        const cleanCurrent = cleanNorm(q.questionText);
+        const cleanCurrent = cleanNormForComparison(q.questionText);
 
         const isDuplicateInDb = (db.questions || []).some((ex) => {
           if (!ex || !ex.questionText) return false;
           const exNorm = normalizeTextForComparison(ex.questionText);
           if (exNorm === norm) return true;
-          const exClean = cleanNorm(ex.questionText);
+          const exClean = cleanNormForComparison(ex.questionText);
           if (cleanCurrent.length > 40 && exClean.length > 40 && cleanCurrent.slice(0, 100) === exClean.slice(0, 100)) {
             return true;
           }
