@@ -3139,6 +3139,63 @@ export const resolveExactSubjectTaxonomy = (
  * Integridade de Saída Estruturada:
  * Garante que cada alternativa seja completa, autocontida, com pontuação correta e sem truncamento abrupto.
  */
+export const getSubjectSpecificDistractors = (subject: string, displayTopic: string): string[] => {
+  const s = (subject || '').toLowerCase();
+
+  if (s.includes('penal') || s.includes('crime') || s.includes('delito')) {
+    return [
+      `A conduta típica prescinde de dolo específico para sua consumação, admitindo punição na modalidade culposa independentemente de expressa previsão legal.`,
+      `A reparação do dano ou a restituição voluntária da coisa antes do julgamento extingue de plano a punibilidade em qualquer hipótese de delito funcional.`,
+      `Trata-se de infração formal e unissubsistente que não admite a tentativa sob nenhuma circunstância fática.`,
+      `A excludente de ilicitude incide de pleno direito mesmo quando o agente atua em manifesto excesso culposo ou doloso.`,
+      `Aplica-se causa especial de aumento de pena de forma automática caso a infração seja praticada fora do horário de expediente regular.`
+    ];
+  }
+
+  if (s.includes('constitucional')) {
+    return [
+      `A matéria é de competência privativa da União, sendo vedada delegação aos Estados ou ao Distrito Federal mesmo mediante lei complementar.`,
+      `A norma constitucional correspondente possui eficácia limitada, dependendo de expressa e prévia regulamentação ordinária para produzir efeitos práticos.`,
+      `A garantia fundamental correspondente admite suspensão automática por ato discricionário do Poder Executivo, prescindindo de decretação de estado de defesa.`,
+      `A proposição submete-se a rito de quórum qualificado de três quintos em dois turnos de votação em cada Casa do Congresso Nacional.`,
+      `O controle concentrado de constitucionalidade do ato normativo cabe originariamente aos Tribunais de Contas dos entes federados.`
+    ];
+  }
+
+  if (s.includes('portugu') || s.includes('gram') || s.includes('redação')) {
+    return [
+      `O emprego do acento grave indicativo de crase é de observância obrigatória em virtude da regência do verbo e do substantivo determinado subsequente.`,
+      `A alteração do tempo verbal para o pretérito imperfeito do subjuntivo preserva a correção gramatical e a coerência semântica original do período.`,
+      `O vocábulo exerce a função sintática de complemento nominal, ligando-se por subordinação ao núcleo do predicado.`,
+      `A substituição do conector mantém o valor semântico causal e as relações de subordinação sintática estabelecidas no texto.`,
+      `A concordância verbal estabelece-se no plural por força da presença de sujeito composto posposto ao verbo.`
+    ];
+  }
+
+  if (s.includes('processual') || s.includes('processo')) {
+    return [
+      `A decretação da medida cautelar submete-se à cláusula de reserva de jurisdição, sendo nula a decisão destituída de fundamentação concreta.`,
+      `O prazo para interposição do recurso cabível conta-se em dias corridos, não se interrompendo pela oposição de embargos de declaração.`,
+      `A competência ratione loci possui natureza absoluta, admitindo prorrogação tácita mediante conveniência das partes.`,
+      `A inobservância da formalidade procedimental acarreta nulidade relativa que se convalida caso não arguida na primeira oportunidade.`,
+      `O contraditório prévio é indispensável na fase inquisitorial sob pena de contaminação integral do caderno probatório.`
+    ];
+  }
+
+  // Padrão Direito Administrativo / Geral
+  return [
+    `A competência administrativa para o ato é privativa e indelegável, acarretando nulidade de pleno direito caso exercida por autoridade subordinada.`,
+    `A eficácia da medida fica sujeita a ratificação expressa e vinculante pelo órgão colegiado superior da instituição.`,
+    `O prazo prescricional para apuração da conduta interrompe-se com a simples notícia anônima perante a ouvidoria do órgão.`,
+    `A penalidade disciplinar correspondente tem aplicação sumária, dispensando-se a instauração de processo administrativo com contraditório prévio.`,
+    `A revogação do ato por motivo de conveniência e oportunidade pode ser determinada pelo Poder Judiciário em sede de controle de legalidade.`
+  ];
+};
+
+/**
+ * Integridade de Saída Estruturada:
+ * Garante que cada alternativa seja completa, autocontida, com pontuação correta e sem truncamento abrupto.
+ */
 export const sanitizeStructuredOptionText = (rawText: string, fallback: string): string => {
   if (!rawText || typeof rawText !== 'string') return fallback;
   let text = rawText.trim();
@@ -3162,6 +3219,17 @@ export const sanitizeStructuredOptionText = (rawText: string, fallback: string):
 export const sanitizeStructuredQuestionText = (rawText: string, defaultTopic: string): string => {
   if (!rawText || typeof rawText !== 'string') return `Acerca de ${defaultTopic}, assinale a afirmativa correta:`;
   let text = rawText.trim();
+
+  // Strip meta-study jargon (mnemônico, mapa tático, esquematização, resumo)
+  text = text.replace(/^(?:considerando|com\s+base\s+n[ao]|conforme|segundo|de\s+acordo\s+com)\s+(?:o\s+mnem[oô]nico|o\s+mapa\s+t[aá]tico|a\s+esquematiza[çc][ãa]o\s+t[aá]tica|o\s+resumo\s+t[aá]tico|o\s+alerta\s+do\s+material|as\s+notas\s+de\s+estudo)[^,:\.\n]*[,:\.\-–]\s*/gi, '');
+  text = text.replace(/^(?:o\s+mnem[oô]nico|a\s+sigla|o\s+mapa\s+t[aá]tico)[^,:\.\n]*[,:\.\-–]\s*/gi, '');
+
+  if (!text || text.length < 15) {
+    text = `Acerca das disposições e preceitos normativos de ${defaultTopic}, assinale a afirmativa correta:`;
+  } else {
+    text = text.charAt(0).toUpperCase() + text.slice(1);
+  }
+
   text = text.replace(/[\s,;:\-]+(?:de|que|e|ou|com|em|para|por)\s*$/i, '');
   text = text.replace(/\.{2,}\s*$/, '');
   text = text.trim();
@@ -3225,6 +3293,11 @@ app.post('/api/generate-questions', async (req, res) => {
           .replace(/&quot;/gi, '"')
           .replace(/&#39;/gi, "'");
       }
+      cleaned = cleaned
+        .replace(/\[ÚLTIMO (?:ARTIGO|TÓPICO) PROCESSADO:[^\]]*\]/gi, '')
+        .replace(/\[(?:LEGISLAÇÃO|DOCUMENTO) CONCLUÍDO NA ÍNTEGRA\]/gi, '')
+        .replace(/\[TEXTO DE ESTUDO[^\]]*\]/gi, '')
+        .replace(/\[SUMÁRIO ESTRATÉGICO[^\]]*\]/gi, '');
       return cleaned
         .replace(/[ \t]+/g, ' ')
         .replace(/\n{3,}/g, '\n\n')
@@ -3325,35 +3398,36 @@ app.post('/api/generate-questions', async (req, res) => {
       const effectiveCount = Math.max(1, targetCount);
       let units = extractStructuralUnits(rawText, Math.max(effectiveCount * 2, (effectiveCount + existingCount) * 2));
 
-      // If units are still fewer than effectiveCount, break on paragraphs or sentences or even character chunks
+      // If units are still fewer than effectiveCount, check if splitting on double newlines / substantive paragraphs helps
       if (units.length < effectiveCount) {
         const cleaned = cleanContent(rawText);
         const paragraphs = cleaned
-          .split(/(?:\n{1,}|\r\n{1,}|(?<=[.!?])\s+(?=[A-Z0-9#\-\*]))/)
+          .split(/\n{2,}/)
           .map((p) => p.trim())
-          .filter((p) => p.length > 20);
+          .filter((p) => p.length > 40);
 
         if (paragraphs.length >= effectiveCount) {
           units = paragraphs;
-        } else {
+        } else if (units.length === 0 && paragraphs.length > 0) {
+          units = paragraphs;
+        } else if (units.length === 0) {
           const sentences = cleaned
             .split(/(?<=[.!?;\n])\s+/)
             .map((s) => s.trim())
-            .filter((s) => s.length > 10);
-          if (sentences.length >= effectiveCount) {
-            units = sentences;
-          } else {
-            const words = cleaned.split(/\s+/).filter(Boolean);
-            const wordsPerChunk = Math.max(5, Math.floor(words.length / effectiveCount));
-            const chunked: string[] = [];
-            for (let i = 0; i < effectiveCount; i++) {
-              const start = i * wordsPerChunk;
-              const end = i === effectiveCount - 1 ? words.length : (i + 1) * wordsPerChunk;
-              chunked.push(words.slice(start, end).join(' '));
-            }
-            units = chunked;
-          }
+            .filter((s) => s.length > 30);
+          units = sentences.length > 0 ? sentences : [cleaned];
         }
+      }
+
+      // If units are still fewer than effectiveCount (e.g. 5 complete articles for 15 questions),
+      // DO NOT slice into tiny 5-word snippets! Instead, replicate/cycle the complete coherent units
+      // so each zone receives a full, substantive legal block with caput, parágrafos and penalties.
+      if (units.length < effectiveCount && units.length > 0) {
+        const expanded: string[] = [];
+        for (let i = 0; i < effectiveCount; i++) {
+          expanded.push(units[i % units.length]);
+        }
+        units = expanded;
       }
 
       const totalUnits = units.length;
@@ -3436,25 +3510,28 @@ app.post('/api/generate-questions', async (req, res) => {
         const candidateSentences = zoneText
           .split(/(?<=[.!?])\s+|\n{2,}/)
           .map((s) => cleanContent(s).replace(/^[0-9\.\-\*#§ºª\s\(\)]+/, '').trim())
+          .map((s) => s.replace(/^(?:artigo|art\.)\s*\d+[ºo]?[a-z\-]*\s*[\.\-–:]?\s*/i, '').trim())
           .filter((s) => {
-            if (s.length < 35 || s.length > 220) return false;
-            if (/^(mapa|título|capítulo|seção|artigo|art\.|página|resumo|sumário|módulo|questão)/i.test(s)) return false;
+            if (s.length < 35 || s.length > 250) return false;
+            if (/^(mapa|título|capítulo|seção|página|resumo|sumário|módulo|questão)/i.test(s)) return false;
             if (/\[|\]|TEXTO DE ESTUDO|LEI SECA|SUMÁRIO ESTRATÉGICO/i.test(s)) return false;
-            return /\b(é|são|será|serão|deve|devem|não|vedado|garantido|assegurado|constitui|salvo|inviolável|compete|autorizado|dispensado|proibido|facultado|independe|mediante|sujeito|assegura)\b/i.test(s);
+            return /\b(é|são|será|serão|deve|devem|não|vedado|garantido|assegurado|constitui|salvo|inviolável|compete|autorizado|dispensado|proibido|facultado|independe|mediante|sujeito|assegura|apropriar|exigir|solicitar|receber|praticar|deixar|retardar)\b/i.test(s);
           });
 
         const topicName = (slice.regionTitle || '').replace(/[\[\]]/g, '').trim();
         const displayTopic = topicName && !topicName.startsWith('Tópico') && !topicName.includes('TEXTO DE ESTUDO') ? topicName : title;
 
-        const sentIdx = (idx + offsetCount) % Math.max(1, candidateSentences.length);
-        const representativeSentence = candidateSentences[sentIdx] ||
-          `No âmbito de ${displayTopic}, a observância das regras e preceitos legais é indispensável para a validade dos procedimentos administrativos e operacionais.`;
-
-        // Extract article or statutory reference
         const lawRefMatch =
           zoneText.match(/(?:Art\.?|Artigo)\s*\d+[º\w\.\-]*(?:\s*,\s*(?:inciso|parágrafo|§)\s*[\w\dº]+)?/i) ||
           zoneText.match(/Lei\s*(?:nº|n°)?\s*[\d\.]+/i);
         const lawRef = lawRefMatch ? lawRefMatch[0] : `${title}${displayTopic !== title ? ` - ${displayTopic}` : ''}`;
+
+        const resolvedSubjInit = resolveExactSubjectTaxonomy(subj, lawRef, '', title);
+        const sentIdx = (idx + offsetCount) % Math.max(1, candidateSentences.length);
+        const representativeSentence = candidateSentences[sentIdx] ||
+          (resolvedSubjInit === 'Direito Penal'
+            ? `A tipificação da conduta funcional exige o dolo específico e a qualidade especial de funcionário público no exercício ou em razão da função.`
+            : `No âmbito de ${displayTopic}, a observância das regras e preceitos normativos é indispensável para a validade dos procedimentos operacionais.`);
 
         const synthTypologies: Array<'case_study' | 'direct' | 'jurisprudence'> = ['direct', 'case_study', 'jurisprudence'];
         const assignedStyle = synthTypologies[idx % 3];
@@ -3519,14 +3596,9 @@ app.post('/api/generate-questions', async (req, res) => {
             }
           }
 
-          // Fallbacks contextuais caso haja poucas sentenças na zona
-          const topicFallbacks = [
-            `No tocante a ${displayTopic}, a eficácia de suas diretrizes prescinde de formalização específica, tendo aplicação meramente programática e facultativa.`,
-            `Em relação a ${displayTopic}, compete privativamente ao órgão de controle externo revogar as medidas aplicadas, vedada a autotutela administrativa.`,
-            `As penalidades e vedações relacionadas a ${displayTopic} são aplicadas de plano, dispensando-se a instauração de processo administrativo com contraditório prévio.`,
-            `Os prazos e formalidades previstos para ${displayTopic} admitem prorrogação tácita e ilimitada por conveniência da chefia imediata.`,
-            `A observância das diretrizes concernentes a ${displayTopic} fica condicionada à expressa aprovação legislativa anual.`
-          ];
+          // Fallbacks contextuais específicos por disciplina (Penal, Constitucional, Administrativo, etc.)
+          const resolvedSubj = resolveExactSubjectTaxonomy(subj, lawRef, representativeSentence, title);
+          const topicFallbacks = getSubjectSpecificDistractors(resolvedSubj, displayTopic);
 
           for (const fb of topicFallbacks) {
             if (distractorPool.length < 5) distractorPool.push(fb);
@@ -4626,7 +4698,11 @@ ${activeSlices
     (s) => `  • Questão para a [ZONA #${s.index}]: DEVE ser extraída EXCLUSIVAMENTE do texto da ZONA #${s.index} (${s.regionTitle}).`
   )
   .join('\n')}
-- NENHUM artigo, parágrafo, tema ou regra pode ser repetido entre as questões deste lote! Cada questão deve versar sobre artigos diferentes.
+- VARIAÇÃO E PROFUNDIDADE OBRIGATÓRIA:
+  • Se o texto contiver múltiplos artigos, distribua as questões entre artigos distintos.
+  • Quando mais de uma questão abordar o mesmo artigo ou instituto normativo, é OBRIGATÓRIO alternar a tipologia e o ângulo da cobrança:
+    - Alterne entre situação hipotética (caso prático detalhado com personagens realistas, como servidores públicos em fiscalização ou repartição), literalidade estrita de parágrafos/incisos/qualificadoras (ex: parágrafo culposo, causas de aumento de pena, exceções) e súmulas/jurisprudência consolidada.
+    - É terminantemente proibido repetir o mesmo caso hipotético, o mesmo comando de questão ou a mesma pegadinha em questões diferentes.
 - No campo "sourceLawRef", indique com exatidão o artigo, parágrafo ou inciso cobrado (ex: "Art. 4º, caput", "Art. 7º, inciso VI", "Art. 12, § 3º", "Art. 14, § 7º", etc.).`;
       }
 
@@ -4665,14 +4741,16 @@ ${activeSlices
       );
 
       const cooldownAndTypologyDirective = !isMultiMat && (cooldownArticles.length > 0 || cooldownSnippets.length > 0)
-        ? `\n🚨 REGRA DE COOLDOWN TEMÁTICO E DISPOSITIVO (INTERVALO MÍNIMO DE 15 QUESTÕES):
-Os seguintes artigos/dispositivos e enunciados foram cobrados nas ÚLTIMAS 15 QUESTÕES do candidato e estão sob COOLDOWN RIGOROSO:
-${cooldownArticles.length > 0 ? `• Dispositivos sob Cooldown (PROIBIDO REPETIR NESTE LOTE): [${cooldownArticles.slice(0, 25).join(', ')}]` : ''}
-${cooldownSnippets.length > 0 ? `• Enunciados sob Cooldown:\n${cooldownSnippets.slice(0, 8).map((s, idx) => `   ${idx + 1}. "${s}..."`).join('\n')}` : ''}
-DIRETRIZ MANDATÓRIA DE COBERTURA E ESPAÇAMENTO:
-1. É TERMINANTEMENTE PROIBIDO gerar questões sobre qualquer um dos artigos ou dispositivos sob cooldown listados acima!
-2. Você DEVE obrigatoriamente explorar os DEMAIS artigos, parágrafos e incisos da sua Zona para garantir amplitude de edital.
-${olderArticlesOutsideCooldown.length > 0 ? `3. Artigos cobrados fora da janela de 15 questões [${olderArticlesOutsideCooldown.slice(0, 10).join(', ')}] podem ser revisitados, DESDE QUE você OBRIGATORIAMENTE alterne a tipologia da cobrança (ex: se antes foi literalidade, agora elabore caso hipotético ou jurisprudência).` : ''}\n`
+        ? `\n🚨 REGRA DE ESPAÇAMENTO TEMÁTICO E VARIAÇÃO DE TIPOLOGIA (COOLDOWN DE 15 QUESTÕES):
+O candidato já respondeu recentemente a questões com os seguintes enunciados e dispositivos:
+${cooldownSnippets.length > 0 ? `• Enunciados anteriores (PROIBIDO REPETIR A MESMA SITUAÇÃO OU COBRANÇA):\n${cooldownSnippets.slice(0, 10).map((s, idx) => `   ${idx + 1}. "${s}..."`).join('\n')}` : ''}
+${cooldownArticles.length > 0 ? `• Artigos já abordados recentemente: [${cooldownArticles.slice(0, 20).join(', ')}]` : ''}
+DIRETRIZ MANDATÓRIA DE VARIAÇÃO:
+1. Priorize artigos, incisos e parágrafos que AINDA NÃO FORAM COBRADOS no histórico acima.
+2. É PERMITIDO abordar novamente um artigo ou instituto jurídico já trabalhado, MAS VOCÊ DEVE OBRIGATORIAMENTE ALTERNAR A TIPOLOGIA DA COBRANÇA:
+   - Se a questão anterior foi sobre a definição geral ou literalidade, agora OBRIGATORIAMENTE elabore uma situação hipotética / estudo de caso prático com personagens inéditos e situações realistas (ex: auditor fiscal, escrivão de polícia, servidor em comissão), ou cobre um parágrafo/exceção específico (ex: forma culposa, causa de diminuição ou aumento de pena, extinção da punibilidade, reparação do dano).
+   - NUNCA repita a mesma historinha, os mesmos fatos ou as mesmas opções já apresentadas anteriormente.
+3. PROIBIÇÃO DE METACONTEÚDO: NUNCA crie questões perguntando sobre "mnemônicos", "mapas mentais", "resumos" ou termos de memorização do material. Cobre sempre a NORMA JURÍDICA E A APLICAÇÃO PRÁTICA.\n`
         : '';
 
       const subjectSpecificDirective = isPortuguese
@@ -4728,7 +4806,10 @@ DIRETRIZES FUNDAMENTAIS:
    - É proibido cobrar dispositivos revogados, redações anteriores a reformas legislativas (Pacote Anticrime, Lei 14.133, Lei 14.230 de Improbidade, Lei Henry Borel) ou súmulas/teses superadas do STF/STJ.
 9. REGRA DE ALTERNÂNCIA DE TIPOLOGIA DA COBRANÇA:
    - Alterne obrigatoriamente a tipologia da cobrança entre as questões do lote: 'case_study' (situação hipotética), 'direct' (literalidade da lei seca) e 'jurisprudence' (jurisprudência consolidada/súmulas).
-   - Preencha no campo "styleCategory": "case_study", "direct" ou "jurisprudence".`;
+   - Preencha no campo "styleCategory": "case_study", "direct" ou "jurisprudence".
+10. PROIBIÇÃO ABSOLUTA DE METACONTEÚDO / RECURSOS MNEMÔNICOS:
+   - É TERMINANTEMENTE PROIBIDO criar questões, enunciados ou alternativas sobre recursos didáticos do material, tais como "mnemônico", "mapa tático", "esquematização tática", "resumo", "tabela", "alerta de estudo" ou siglas mnemônicas (como CON-EXI, PAS-SOL, etc.).
+   - As bancas examinadoras de concurso cobram a NORMA JURÍDICA, os tipos legais, os requisitos e a jurisprudência, NUNCA o método de memorização! Se o texto contiver um mnemônico ou dica didática, abstraia a regra legal substantiva subjacente e elabore a questão como uma autêntica questão de prova sobre a conduta típica ou o preceito legal.`;
 
       const prompt = `ATENÇÃO CRÍTICA DE COBERTURA INTEGRAL DO CONTEÚDO:
 O resumo de estudo fornecido possui múltiplas páginas e tópicos essenciais do início ao fim.
@@ -4985,19 +5066,13 @@ ${chunkFormattedSectionsText}`;
             finalCorrectAnswer = isCorr ? 'True' : 'False';
           } else {
             const validOpts: any[] = [];
-            const contextualDistractors = [
-              `No âmbito de ${chunkSubject}, tal preceito possui aplicação facultativa dispensando formalização específica.`,
-              `A competência para os atos pertinentes a ${chunkSubject} é privativa da chefia superior, indelegável a subordinados.`,
-              `O descumprimento das formalidades procedimentais acarreta a nulidade de pleno direito do ato correspondente.`,
-              `A eficácia da medida fica sujeita a ratificação expressa pelo órgão de assessoramento legal.`,
-              `As vedações legais aplicam-se exclusivamente quando houver dolo manifesto ou prejuízo direto comprovado.`
-            ];
+            const contextualDistractors = getSubjectSpecificDistractors(chunkSubject, chunkTitle);
 
             for (let optIdx = 0; optIdx < 5; optIdx++) {
               const letter = (['A', 'B', 'C', 'D', 'E'][optIdx]) as 'A' | 'B' | 'C' | 'D' | 'E';
               const rawItem = rawOptions[optIdx];
               const rawText = typeof rawItem === 'string' ? rawItem : (rawItem?.text || '');
-              const fallback = contextualDistractors[optIdx] || `Previsão normativa sujeita a regulamentação própria da matéria.`;
+              const fallback = contextualDistractors[optIdx] || contextualDistractors[0] || `Previsão normativa sujeita a regulamentação própria da matéria.`;
               validOpts.push({
                 id: letter,
                 text: sanitizeStructuredOptionText(rawText, fallback),
@@ -5210,9 +5285,9 @@ ${chunkFormattedSectionsText}`;
         .toLowerCase()
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
-        .replace(/^(?:acerca\s+d[eo]|em\s+rela[cç][aã]o\s+a[o]?|conforme|segundo|no\s+que\s+tange|julgue\s+o\s+item|assinale\s+a\s+op[cç][aã]o|com\s+base\s+n[ao]|considerando)\s*/gi, '')
+        .replace(/^(?:nos\s+termos\s+d[ao]|de\s+acordo\s+com|no\s+tocante\s+a[o]?|no\s+que\s+concerne\s+a[o]?|em\s+conformidade\s+com|acerca\s+d[eo]|em\s+rela[cç][aã]o\s+a[o]?|conforme|segundo|no\s+que\s+tange|julgue\s+o\s+item|assinale\s+a\s+op[cç][aã]o|assinale\s+a\s+afirmativa\s+correta|assinale\s+a\s+alternativa\s+correta|com\s+base\s+n[ao]|considerando)[^,:\.\n]*[,:\.\-–]\s*/gi, '')
         .replace(/[^a-z0-9]/g, '')
-        .slice(0, 90);
+        .slice(0, 180);
 
     // Pre-populate with all existing snippets & database questions for this subject/material
     for (const snip of mergedExistingSnippets) {
@@ -5244,6 +5319,27 @@ ${chunkFormattedSectionsText}`;
         ...q,
         id: safeId,
       });
+    }
+
+    // Guarantee exact requested count for single material requests if any duplicate was dropped
+    if (!isGeneralSimulado && finalCleanList.length < questionCount) {
+      const neededCount = questionCount - finalCleanList.length;
+      console.log(`[Questions Service] Reabastecendo ${neededCount} questão(ões) para atingir exatamente o total solicitado de ${questionCount}...`);
+      const rawDocText = targetSummaries[0]?.summaryText || targetSummaries[0]?.sampleText || targetSummaries[0]?.title || '';
+      const synthReplenish = synthesizeQuestionsFromSummaryText(
+        rawDocText,
+        neededCount,
+        primaryMaterialId,
+        sourceSummaryTitle,
+        primarySubject,
+        requestedExamBoard,
+        effectiveQType,
+        normalizedDifficulty,
+        finalCleanList.length + 1
+      );
+      for (const sq of synthReplenish) {
+        finalCleanList.push(sq);
+      }
     }
 
     allGeneratedQuestions = finalCleanList;
