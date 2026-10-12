@@ -3860,53 +3860,54 @@ app.post('/api/generate-questions', async (req, res) => {
     });
 
     // Determine difficulty mode: 'Fácil' | 'Médio' | 'Difícil' | 'Aleatório'
+    const cleanDiffInput = String(difficulty || '').trim().toLowerCase();
     const isRandomDifficulty =
-      difficulty === 'Aleatório' ||
-      difficulty === 'Aleatória' ||
-      difficulty === 'Random' ||
-      difficulty === 'Mista' ||
-      difficulty === 'Misto';
+      cleanDiffInput === 'aleatório' ||
+      cleanDiffInput === 'aleatorio' ||
+      cleanDiffInput === 'aleatória' ||
+      cleanDiffInput === 'aleatoria' ||
+      cleanDiffInput === 'random' ||
+      cleanDiffInput === 'mista' ||
+      cleanDiffInput === 'misto' ||
+      cleanDiffInput === 'all' ||
+      cleanDiffInput === 'todos' ||
+      cleanDiffInput === 'todas';
 
     let normalizedDifficulty: 'Fácil' | 'Médio' | 'Difícil' | 'Aleatório' = 'Difícil';
     if (isRandomDifficulty) {
       normalizedDifficulty = 'Aleatório';
-    } else if (difficulty === 'Fácil' || difficulty === 'Easy') {
+    } else if (cleanDiffInput.includes('facil') || cleanDiffInput.includes('fácil') || cleanDiffInput.includes('easy')) {
       normalizedDifficulty = 'Fácil';
-    } else if (difficulty === 'Médio' || difficulty === 'Medium') {
+    } else if (cleanDiffInput.includes('medio') || cleanDiffInput.includes('médio') || cleanDiffInput.includes('medium')) {
       normalizedDifficulty = 'Médio';
     } else {
       normalizedDifficulty = 'Difícil';
     }
 
-    // Strict system prompt parameter based on requested difficulty
-    const baseDifficultyRule = `⚖️ REGRA DE DIFICULDADE (INFERÊNCIA ATIVA):
-Mesmo quando a dificuldade solicitada for "Fácil" ou "Média", é TERMINANTEMENTE PROIBIDO criar questões óbvias, dedutíveis por senso comum ou do tipo "preencha a lacuna" básica. Toda questão deve ser "pensável" e exigir esforço cognitivo. O nível "Fácil" deve cobrar a regra geral da lei, mas os distratores (alternativas erradas) devem ser elaborados com termos técnicos plausíveis para induzir ao erro o candidato superficial.`;
-
     let difficultyDirective = '';
     if (isRandomDifficulty) {
-      difficultyDirective = `${baseDifficultyRule}
-
-DIRETRIZ DE DIFICULDADE (DIFICULDADE ALEATÓRIA / MISTA):
-Crie uma distribuição VARIADA e EQUILIBRADA de dificuldades entre as ${questionCount} questões geradas, alternando dinamicamente entre os níveis Fácil, Médio e Difícil:
-- Nível Fácil: cobra a regra geral da lei de forma pensável, com distratores técnicos e plausíveis que induzam o candidato superficial ao erro.
-- Nível Médio: aplicação prática de regras com exceções diretas ('salvo', 'exceto', 'ressalvado'), prazos com condições e confronto entre normas.
-- Nível Difícil: casos complexos, pegadinhas de inversão sutil, distinção entre competências afins e termos de alta precisão jurídica.
-IMPORTANTE: Para CADA questão no JSON de resposta, preencha o campo "difficulty" indicando explicitamente o nível atribuído: "Fácil", "Médio" ou "Difícil".`;
+      difficultyDirective = `⚖️ DIRETRIZ DE DIFICULDADE (DIFICULDADE MISTA / EQUILIBRADA):
+Você DEVE gerar uma distribuição balanceada e variada de níveis de dificuldade ao longo das ${questionCount} questões:
+- Questões de nível "Fácil" (aprox. 1/3 do lote): cobram diretamente a regra geral ou o caput da lei, conceitos fundamentais e definições expressas, com distratores bem formulados.
+- Questões de nível "Médio" (aprox. 1/3 do lote): cobram aplicação prática direta, prazos legais, requisitos cumulativos e exceções expressas ('salvo', 'exceto', 'ressalvado').
+- Questões de nível "Difícil" (aprox. 1/3 do lote): cobram casos práticos com situações hipotéticas detalhadas, confronto entre competências afins, exceções ocultas e distinções semânticas de alta precisão ('poderá' vs 'deverá').
+IMPORTANTE: Para CADA questão gerada no JSON de resposta, defina OBRIGATORIAMENTE o campo "difficulty" com o nível real atribuído: "Fácil", "Médio" ou "Difícil".`;
     } else if (normalizedDifficulty === 'Fácil') {
-      difficultyDirective = `${baseDifficultyRule}
-
-DIRETRIZ DE DIFICULDADE (FÁCIL):
-Cobre a regra geral e os preceitos expressos da lei de forma pensável (jamais óbvia ou por mero senso comum). Os distratores (alternativas incorretas) DEVEM ser elaborados com termos técnicos plausíveis para induzir ao erro o candidato que estudou apenas superficialmente. No campo "difficulty", defina "Fácil".`;
+      difficultyDirective = `⚖️ DIRETRIZ DE DIFICULDADE EXCLUSIVA (NÍVEL FÁCIL):
+- TODAS as questões geradas neste lote DEVEM ter nível FÁCIL ("difficulty": "Fácil").
+- Foco em conceitos fundamentais, definições basilares, regras gerais e preceitos expressos no texto da lei.
+- O enunciado deve ser claro e direto. Os distratores devem ser plausíveis mas claramente contrários à regra geral do texto, permitindo ao estudante consolidar a base da disciplina sem pegadinhas capciosas ou maliciosas.
+- No campo "difficulty" de CADA questão gerada, preencha ESTRITAMENTE: "Fácil".`;
     } else if (normalizedDifficulty === 'Médio') {
-      difficultyDirective = `${baseDifficultyRule}
-
-DIRETRIZ DE DIFICULDADE (MÉDIO):
-Questões que exigem esforço cognitivo sólido: compreensão de prazos, exceções expressas ('salvo', 'exceto'), requisitos cumulativos vs alternativos e aplicação direta da regra a casos fáticos. No campo "difficulty", defina "Médio".`;
+      difficultyDirective = `⚖️ DIRETRIZ DE DIFICULDADE EXCLUSIVA (NÍVEL MÉDIO):
+- TODAS as questões geradas neste lote DEVEM ter nível MÉDIO ("difficulty": "Médio").
+- Foco em prazos processuais e administrativos, requisitos cumulativos vs alternativos, condições especiais, causas de aumento/diminuição de pena e exceções expressas no diploma legal ('salvo', 'exceto', 'ressalvado').
+- No campo "difficulty" de CADA questão gerada, preencha ESTRITAMENTE: "Médio".`;
     } else {
-      difficultyDirective = `${baseDifficultyRule}
-
-DIRETRIZ DE DIFICULDADE (DIFÍCIL - RIGOR MÁXIMO):
-Questões de profundidade cirúrgica, exigindo alto esforço cognitivo: casos práticos complexos, confronto de exceções ocultas, pegadinhas semânticas de alta precisão ('poderá' vs 'deverá', competências privativas vs exclusivas) e distratores altamente persuasivos. No campo "difficulty", defina "Difícil".`;
+      difficultyDirective = `⚖️ DIRETRIZ DE DIFICULDADE EXCLUSIVA (NÍVEL DIFÍCIL - RIGOR MÁXIMO):
+- TODAS as questões geradas neste lote DEVEM ter nível DIFÍCIL ("difficulty": "Difícil").
+- Foco em situações hipotéticas complexas (estudos de caso), confronto entre regras e exceções implícitas, distinção entre competências privativas vs exclusivas ou concorrentes, e distratores altamente convincentes e sofisticados.
+- No campo "difficulty" de CADA questão gerada, preencha ESTRITAMENTE: "Difícil".`;
     }
 
     // Exam Board Directive (FGV, FEPESE, VUNESP, FCC, CEBRASPE, Misto)
@@ -4665,7 +4666,9 @@ Retorne EXCLUSIVAMENTE em formato JSON:
           options: cleanOpts,
           correctAnswer: safeAns,
           explanation: cleanContent(q.explanation || 'Gabarito oficial de concurso fundamentado.'),
-          difficulty: q.difficulty || difficulty || 'Difícil',
+          difficulty: isRandomDifficulty
+            ? (['Fácil', 'Médio', 'Difícil'] as const)[idx % 3]
+            : (normalizedDifficulty as 'Fácil' | 'Médio' | 'Difícil'),
           examBoardRef: q.examBoardRef || `${targetBoard} - Prova Oficial`,
           examOrigin: q.examOrigin || q.examBoardRef || `${targetBoard} - Concurso Público`,
           styleCategory: finalStyle,

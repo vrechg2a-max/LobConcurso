@@ -2996,44 +2996,42 @@ ${cleanContent(m.summaryText || m.sampleText || m.title)}
         }
       }
     });
-    const isRandomDifficulty = difficulty === "Aleat\xF3rio" || difficulty === "Aleat\xF3ria" || difficulty === "Random" || difficulty === "Mista" || difficulty === "Misto";
+    const cleanDiffInput = String(difficulty || "").trim().toLowerCase();
+    const isRandomDifficulty = cleanDiffInput === "aleat\xF3rio" || cleanDiffInput === "aleatorio" || cleanDiffInput === "aleat\xF3ria" || cleanDiffInput === "aleatoria" || cleanDiffInput === "random" || cleanDiffInput === "mista" || cleanDiffInput === "misto" || cleanDiffInput === "all" || cleanDiffInput === "todos" || cleanDiffInput === "todas";
     let normalizedDifficulty2 = "Dif\xEDcil";
     if (isRandomDifficulty) {
       normalizedDifficulty2 = "Aleat\xF3rio";
-    } else if (difficulty === "F\xE1cil" || difficulty === "Easy") {
+    } else if (cleanDiffInput.includes("facil") || cleanDiffInput.includes("f\xE1cil") || cleanDiffInput.includes("easy")) {
       normalizedDifficulty2 = "F\xE1cil";
-    } else if (difficulty === "M\xE9dio" || difficulty === "Medium") {
+    } else if (cleanDiffInput.includes("medio") || cleanDiffInput.includes("m\xE9dio") || cleanDiffInput.includes("medium")) {
       normalizedDifficulty2 = "M\xE9dio";
     } else {
       normalizedDifficulty2 = "Dif\xEDcil";
     }
-    const baseDifficultyRule = `\u2696\uFE0F REGRA DE DIFICULDADE (INFER\xCANCIA ATIVA):
-Mesmo quando a dificuldade solicitada for "F\xE1cil" ou "M\xE9dia", \xE9 TERMINANTEMENTE PROIBIDO criar quest\xF5es \xF3bvias, dedut\xEDveis por senso comum ou do tipo "preencha a lacuna" b\xE1sica. Toda quest\xE3o deve ser "pens\xE1vel" e exigir esfor\xE7o cognitivo. O n\xEDvel "F\xE1cil" deve cobrar a regra geral da lei, mas os distratores (alternativas erradas) devem ser elaborados com termos t\xE9cnicos plaus\xEDveis para induzir ao erro o candidato superficial.`;
     let difficultyDirective = "";
     if (isRandomDifficulty) {
-      difficultyDirective = `${baseDifficultyRule}
-
-DIRETRIZ DE DIFICULDADE (DIFICULDADE ALEAT\xD3RIA / MISTA):
-Crie uma distribui\xE7\xE3o VARIADA e EQUILIBRADA de dificuldades entre as ${questionCount} quest\xF5es geradas, alternando dinamicamente entre os n\xEDveis F\xE1cil, M\xE9dio e Dif\xEDcil:
-- N\xEDvel F\xE1cil: cobra a regra geral da lei de forma pens\xE1vel, com distratores t\xE9cnicos e plaus\xEDveis que induzam o candidato superficial ao erro.
-- N\xEDvel M\xE9dio: aplica\xE7\xE3o pr\xE1tica de regras com exce\xE7\xF5es diretas ('salvo', 'exceto', 'ressalvado'), prazos com condi\xE7\xF5es e confronto entre normas.
-- N\xEDvel Dif\xEDcil: casos complexos, pegadinhas de invers\xE3o sutil, distin\xE7\xE3o entre compet\xEAncias afins e termos de alta precis\xE3o jur\xEDdica.
-IMPORTANTE: Para CADA quest\xE3o no JSON de resposta, preencha o campo "difficulty" indicando explicitamente o n\xEDvel atribu\xEDdo: "F\xE1cil", "M\xE9dio" ou "Dif\xEDcil".`;
+      difficultyDirective = `\u2696\uFE0F DIRETRIZ DE DIFICULDADE (DIFICULDADE MISTA / EQUILIBRADA):
+Voc\xEA DEVE gerar uma distribui\xE7\xE3o balanceada e variada de n\xEDveis de dificuldade ao longo das ${questionCount} quest\xF5es:
+- Quest\xF5es de n\xEDvel "F\xE1cil" (aprox. 1/3 do lote): cobram diretamente a regra geral ou o caput da lei, conceitos fundamentais e defini\xE7\xF5es expressas, com distratores bem formulados.
+- Quest\xF5es de n\xEDvel "M\xE9dio" (aprox. 1/3 do lote): cobram aplica\xE7\xE3o pr\xE1tica direta, prazos legais, requisitos cumulativos e exce\xE7\xF5es expressas ('salvo', 'exceto', 'ressalvado').
+- Quest\xF5es de n\xEDvel "Dif\xEDcil" (aprox. 1/3 do lote): cobram casos pr\xE1ticos com situa\xE7\xF5es hipot\xE9ticas detalhadas, confronto entre compet\xEAncias afins, exce\xE7\xF5es ocultas e distin\xE7\xF5es sem\xE2nticas de alta precis\xE3o ('poder\xE1' vs 'dever\xE1').
+IMPORTANTE: Para CADA quest\xE3o gerada no JSON de resposta, defina OBRIGATORIAMENTE o campo "difficulty" com o n\xEDvel real atribu\xEDdo: "F\xE1cil", "M\xE9dio" ou "Dif\xEDcil".`;
     } else if (normalizedDifficulty2 === "F\xE1cil") {
-      difficultyDirective = `${baseDifficultyRule}
-
-DIRETRIZ DE DIFICULDADE (F\xC1CIL):
-Cobre a regra geral e os preceitos expressos da lei de forma pens\xE1vel (jamais \xF3bvia ou por mero senso comum). Os distratores (alternativas incorretas) DEVEM ser elaborados com termos t\xE9cnicos plaus\xEDveis para induzir ao erro o candidato que estudou apenas superficialmente. No campo "difficulty", defina "F\xE1cil".`;
+      difficultyDirective = `\u2696\uFE0F DIRETRIZ DE DIFICULDADE EXCLUSIVA (N\xCDVEL F\xC1CIL):
+- TODAS as quest\xF5es geradas neste lote DEVEM ter n\xEDvel F\xC1CIL ("difficulty": "F\xE1cil").
+- Foco em conceitos fundamentais, defini\xE7\xF5es basilares, regras gerais e preceitos expressos no texto da lei.
+- O enunciado deve ser claro e direto. Os distratores devem ser plaus\xEDveis mas claramente contr\xE1rios \xE0 regra geral do texto, permitindo ao estudante consolidar a base da disciplina sem pegadinhas capciosas ou maliciosas.
+- No campo "difficulty" de CADA quest\xE3o gerada, preencha ESTRITAMENTE: "F\xE1cil".`;
     } else if (normalizedDifficulty2 === "M\xE9dio") {
-      difficultyDirective = `${baseDifficultyRule}
-
-DIRETRIZ DE DIFICULDADE (M\xC9DIO):
-Quest\xF5es que exigem esfor\xE7o cognitivo s\xF3lido: compreens\xE3o de prazos, exce\xE7\xF5es expressas ('salvo', 'exceto'), requisitos cumulativos vs alternativos e aplica\xE7\xE3o direta da regra a casos f\xE1ticos. No campo "difficulty", defina "M\xE9dio".`;
+      difficultyDirective = `\u2696\uFE0F DIRETRIZ DE DIFICULDADE EXCLUSIVA (N\xCDVEL M\xC9DIO):
+- TODAS as quest\xF5es geradas neste lote DEVEM ter n\xEDvel M\xC9DIO ("difficulty": "M\xE9dio").
+- Foco em prazos processuais e administrativos, requisitos cumulativos vs alternativos, condi\xE7\xF5es especiais, causas de aumento/diminui\xE7\xE3o de pena e exce\xE7\xF5es expressas no diploma legal ('salvo', 'exceto', 'ressalvado').
+- No campo "difficulty" de CADA quest\xE3o gerada, preencha ESTRITAMENTE: "M\xE9dio".`;
     } else {
-      difficultyDirective = `${baseDifficultyRule}
-
-DIRETRIZ DE DIFICULDADE (DIF\xCDCIL - RIGOR M\xC1XIMO):
-Quest\xF5es de profundidade cir\xFArgica, exigindo alto esfor\xE7o cognitivo: casos pr\xE1ticos complexos, confronto de exce\xE7\xF5es ocultas, pegadinhas sem\xE2nticas de alta precis\xE3o ('poder\xE1' vs 'dever\xE1', compet\xEAncias privativas vs exclusivas) e distratores altamente persuasivos. No campo "difficulty", defina "Dif\xEDcil".`;
+      difficultyDirective = `\u2696\uFE0F DIRETRIZ DE DIFICULDADE EXCLUSIVA (N\xCDVEL DIF\xCDCIL - RIGOR M\xC1XIMO):
+- TODAS as quest\xF5es geradas neste lote DEVEM ter n\xEDvel DIF\xCDCIL ("difficulty": "Dif\xEDcil").
+- Foco em situa\xE7\xF5es hipot\xE9ticas complexas (estudos de caso), confronto entre regras e exce\xE7\xF5es impl\xEDcitas, distin\xE7\xE3o entre compet\xEAncias privativas vs exclusivas ou concorrentes, e distratores altamente convincentes e sofisticados.
+- No campo "difficulty" de CADA quest\xE3o gerada, preencha ESTRITAMENTE: "Dif\xEDcil".`;
     }
     let examBoardDirective = "";
     const boardKey = (examBoard || "Misto").toUpperCase();
@@ -3658,7 +3656,7 @@ Retorne EXCLUSIVAMENTE em formato JSON:
           options: cleanOpts,
           correctAnswer: safeAns,
           explanation: cleanContent(q.explanation || "Gabarito oficial de concurso fundamentado."),
-          difficulty: q.difficulty || difficulty2 || "Dif\xEDcil",
+          difficulty: isRandomDifficulty ? ["F\xE1cil", "M\xE9dio", "Dif\xEDcil"][idx % 3] : normalizedDifficulty2,
           examBoardRef: q.examBoardRef || `${targetBoard} - Prova Oficial`,
           examOrigin: q.examOrigin || q.examBoardRef || `${targetBoard} - Concurso P\xFAblico`,
           styleCategory: finalStyle,
