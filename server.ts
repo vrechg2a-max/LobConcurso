@@ -1545,14 +1545,14 @@ function getOrderedModels(models: string[]): string[] {
 }
 
 // Robust multi-model generator with global request budget, automatic retry, timeout protection, dynamic cooldown and fast fallback
-// Default priority: gemini-3.1-flash-lite (high capacity, ultra-fast latency, dedicated quota) -> gemini-flash-latest -> gemini-3.8-flash
+// Default priority: gemini-3.8-flash (primary high-intelligence reasoning model) -> gemini-flash-latest -> gemini-3.1-flash-lite (fast safety fallback)
 async function generateContentWithRetryAndFallback(
   ai: GoogleGenAI,
   requestParams: {
     contents: any;
     config?: any;
   },
-  modelsToTry = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash'],
+  modelsToTry = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'],
   timeoutPerAttemptMs = 45000,
   totalGlobalDeadlineMs = 110000
 ) {
@@ -1576,14 +1576,14 @@ async function generateContentWithRetryAndFallback(
     if (!model.startsWith('gemini-3')) {
       delete modelConfig.thinkingConfig;
     } else if (!modelConfig.thinkingConfig) {
-      // Default to MINIMAL for flash-lite to optimize speed, and LOW for flash
+      // Default to LOW for gemini-3.8-flash for high quality reasoning, and MINIMAL for flash-lite
       modelConfig.thinkingConfig = {
         thinkingLevel: model === 'gemini-3.1-flash-lite' ? ThinkingLevel.MINIMAL : ThinkingLevel.LOW,
       };
     }
 
-    // Primary high-capacity model (gemini-3.1-flash-lite) gets 3 attempts with brief backoff to overcome momentary 503 load spikes
-    const maxAttemptsForModel = model === 'gemini-3.1-flash-lite' ? 3 : (hasAlternativeModel ? 1 : 2);
+    // Primary model (gemini-3.8-flash) gets 3 attempts with brief backoff to overcome momentary 503 load spikes
+    const maxAttemptsForModel = model === 'gemini-3.8-flash' ? 3 : (hasAlternativeModel ? 1 : 2);
 
     for (let attempt = 1; attempt <= maxAttemptsForModel; attempt++) {
       const remainingNow = totalGlobalDeadlineMs - (Date.now() - startTime);
@@ -1785,9 +1785,9 @@ DIRETRIZES FUNDAMENTAIS (RIGOR CONTRA PROLIXIDADE):
           temperature: 0.5,
         },
       },
-      ['gemini-3.1-flash-lite', 'gemini-3.8-flash'],
-      25000,
-      50000
+      ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'],
+      35000,
+      60000
     );
 
     const reply = aiResponse.text?.trim() || 'Olá! Como posso te ajudar na sua preparação para o concurso hoje?';
@@ -1949,7 +1949,7 @@ app.post('/api/extract-pdf-text', async (req, res) => {
               },
             ],
           },
-          ['gemini-3.1-flash-lite', 'gemini-3.8-flash']
+          ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite']
         );
 
         const geminiText = geminiRes.text?.trim();
@@ -2197,8 +2197,8 @@ Sua missão é receber textos de leis secas, códigos normativos ou apostilas te
     let currentChunkEndOffset = 0;
     let hasMoreDocContent = false;
 
-    // Tamanho do lote: 34.000 caracteres no modo exaustivo para cobrir mais conteúdo com alta densidade
-    const maxChunkLen = summaryDensity === 'concise' ? 24000 : 34000;
+    // Tamanho do lote: 20.000 caracteres no modo exaustivo para cobrir o documento com densidade máxima sem compressão excessiva
+    const maxChunkLen = summaryDensity === 'concise' ? 14000 : 20000;
 
     if (fullDocText && fullDocText.length > 0) {
       if (processNextChapter) {
@@ -2437,12 +2437,12 @@ Retorne APENAS o código HTML válido e completo (com <!DOCTYPE html>, <html>, <
         config: {
           systemInstruction,
           temperature: 0.15,
-          maxOutputTokens: 8192,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+          maxOutputTokens: 16384,
+          thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM },
         },
       },
-      ['gemini-3.1-flash-lite', 'gemini-3.8-flash'],
-      55000,
+      ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'],
+      60000,
       120000
     );
 
@@ -2903,9 +2903,13 @@ ${textToProcess}`;
         config: {
           systemInstruction,
           temperature: 0.15,
-          maxOutputTokens: 8192,
+          maxOutputTokens: 16384,
+          thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM },
         },
-      }
+      },
+      ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'],
+      60000,
+      120000
     );
 
     let cleanHtml = response.text ? response.text.trim() : '';
@@ -3464,23 +3468,27 @@ app.post('/api/generate-questions', async (req, res) => {
 
       const totalUnits = units.length;
       const slices: DocumentSlice[] = [];
+      const unitsPerZone = Math.max(1, Math.ceil(totalUnits / effectiveCount));
+      // Dynamic shift / rotation based on existing questions count
+      // This ensures that when generating 15 questions, and then generating 15 questions AGAIN,
+      // the second run traverses different articles and topics across the entire 60+ pages of the document!
+      const rotationOffset = existingCount > 0 ? (existingCount * Math.max(1, Math.floor(unitsPerZone / 2) || 1)) % totalUnits : 0;
 
       for (let zIdx = 0; zIdx < effectiveCount; zIdx++) {
-        const zoneStartFrac = zIdx / effectiveCount;
-        const zoneEndFrac = (zIdx + 1) / effectiveCount;
-
-        const rawStart = Math.min(totalUnits - 1, Math.floor(zoneStartFrac * totalUnits));
-        const rawEnd = Math.max(rawStart + 1, Math.min(totalUnits, Math.ceil(zoneEndFrac * totalUnits)));
-
-        let zoneUnits = units.slice(rawStart, rawEnd);
+        const rawStart = (Math.floor((zIdx / effectiveCount) * totalUnits) + rotationOffset) % totalUnits;
+        let zoneUnits: string[] = [];
+        for (let u = 0; u < unitsPerZone; u++) {
+          const targetUnitIdx = (rawStart + u) % totalUnits;
+          zoneUnits.push(units[targetUnitIdx]);
+        }
         if (zoneUnits.length === 0) {
           zoneUnits = [units[rawStart] || units[0]];
         }
 
-        // Limit each zone's text to max 3500 chars to prevent prompt bloat while retaining complete articles
+        // Limit each zone's text to max 4500 chars to retain complete articles with incisos and parágrafos
         let zoneContent = zoneUnits.join('\n\n---\n\n').trim();
-        if (zoneContent.length > 3500) {
-          zoneContent = zoneContent.slice(0, 3500) + '...';
+        if (zoneContent.length > 4500) {
+          zoneContent = zoneContent.slice(0, 4500) + '...';
         }
 
         // Extract first heading or key phrase from the zone content (strictly clean text)
@@ -3514,9 +3522,9 @@ app.post('/api/generate-questions', async (req, res) => {
           primaryHeading = primaryHeading.slice(0, 55).trim() + '...';
         }
 
-        const percentStart = Math.round(zoneStartFrac * 100);
-        const percentEnd = Math.round(zoneEndFrac * 100);
-        const percentLabel = `${percentStart}% a ${percentEnd}% da extensão total`;
+        const percentStart = Math.round((rawStart / totalUnits) * 100);
+        const percentEnd = Math.min(100, Math.round(((rawStart + unitsPerZone) / totalUnits) * 100));
+        const percentLabel = `${percentStart}% a ${percentEnd}% da extensão do documento`;
 
         slices.push({
           index: zIdx + 1,
@@ -4407,9 +4415,9 @@ Retorne EXCLUSIVAMENTE em formato JSON (bloco json) com a lista de objetos:
           const aiResp = await generateContentWithRetryAndFallback(
             ai,
             { contents: extractionPrompt, config: { temperature: 0.4 } },
-            ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash'],
-            35000,
-            70000
+            ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'],
+            40000,
+            75000
           );
           rawResponse = aiResp.text || '';
         } catch (fbErr) {
@@ -4525,9 +4533,9 @@ Retorne EXCLUSIVAMENTE em formato JSON:
           const suppResp = await generateContentWithRetryAndFallback(
             ai,
             { contents: supplementPrompt, config: { temperature: 0.7 } },
-            ['gemini-3.1-flash-lite', 'gemini-flash-latest'],
-            20000,
-            40000
+            ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'],
+            25000,
+            45000
           );
           let suppJson = (suppResp.text || '').trim();
           if (suppJson.includes('```json')) suppJson = suppJson.split('```json')[1].split('```')[0].trim();
@@ -4961,6 +4969,8 @@ ${chunkFormattedSectionsText}`;
             config: {
               systemInstruction,
               temperature: 0.3,
+              maxOutputTokens: 16384,
+              thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM },
               responseMimeType: 'application/json',
               responseSchema: {
                 type: Type.ARRAY,
@@ -4974,7 +4984,7 @@ ${chunkFormattedSectionsText}`;
             },
           },
           ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'],
-          60000,
+          65000,
           120000
         );
         rawResponseText = response.text ? response.text.trim() : '[]';
@@ -4997,10 +5007,12 @@ ${chunkFormattedSectionsText}`;
             config: {
               systemInstruction,
               temperature: 0.35,
+              maxOutputTokens: 16384,
+              thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM },
             },
           },
-          ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash'],
-          50000,
+          ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'],
+          60000,
           110000
         );
         rawResponseText = relaxed.text ? relaxed.text.trim() : '[]';
@@ -5317,9 +5329,9 @@ ${chunkFormattedSectionsText}`;
       allGeneratedQuestions = chunkResults.flat();
     } else if (!isGeneralSimulado && questionCount > 5) {
       // Single material with 10 or 15 items requested:
-      // Divide into parallel sub-batches of 5 questions each to guarantee 100% breadth, zero timeout, and zero truncation!
+      // Divide into structured sub-batches of 5 questions each to guarantee 100% breadth, zero timeout, and zero truncation!
       const rawDocText = targetSummaries[0]?.summaryText || targetSummaries[0]?.sampleText || targetSummaries[0]?.title || '';
-      const allSlices = partitionDocumentAcrossBreadth(rawDocText, questionCount, 0);
+      const allSlices = partitionDocumentAcrossBreadth(rawDocText, questionCount, existingForContext.length);
 
       const batchSize = 5;
       const subBatches: Array<{ slices: DocumentSlice[]; batchIdx: number; focus: string }> = [];
@@ -5332,21 +5344,28 @@ ${chunkFormattedSectionsText}`;
         subBatches.push({ slices: batchSlices, batchIdx: Math.floor(b / batchSize), focus: focusLabel });
       }
 
-      console.log(`[Questions Service] Executando ${subBatches.length} sublotes paralelos para cobrir 100% da extensão (${questionCount} questões)...`);
+      console.log(`[Questions Service] Executando ${subBatches.length} sublotes sequenciais com Gemini 3.8 Flash para cobrir 100% da extensão (${questionCount} questões)...`);
 
-      const batchPromises = subBatches.map((sb) =>
-        generateQuestionsForChunk(
-          targetSummaries,
-          false,
-          sb.batchIdx,
-          sb.slices.length,
-          sb.focus,
-          sb.slices,
-          existingForContext
-        )
-      );
+      const batchResults: any[][] = [];
+      for (const sb of subBatches) {
+        try {
+          const res = await generateQuestionsForChunk(
+            targetSummaries,
+            false,
+            sb.batchIdx,
+            sb.slices.length,
+            sb.focus,
+            sb.slices,
+            existingForContext
+          );
+          if (Array.isArray(res) && res.length > 0) {
+            batchResults.push(res);
+          }
+        } catch (subErr) {
+          console.warn(`[Questions Service] Sublote #${sb.batchIdx} falhou temporariamente:`, subErr);
+        }
+      }
 
-      const batchResults = await Promise.all(batchPromises);
       allGeneratedQuestions = batchResults.flat();
     } else {
       // Single material or small multi-material set with <= 5 items
@@ -5415,21 +5434,80 @@ ${chunkFormattedSectionsText}`;
     // Guarantee exact requested count for single material requests if any duplicate was dropped
     if (!isGeneralSimulado && finalCleanList.length < questionCount) {
       const neededCount = questionCount - finalCleanList.length;
-      console.log(`[Questions Service] Reabastecendo ${neededCount} questão(ões) para atingir exatamente o total solicitado de ${questionCount}...`);
-      const rawDocText = targetSummaries[0]?.summaryText || targetSummaries[0]?.sampleText || targetSummaries[0]?.title || '';
-      const synthReplenish = synthesizeQuestionsFromSummaryText(
-        rawDocText,
-        neededCount,
-        primaryMaterialId,
-        sourceSummaryTitle,
-        primarySubject,
-        requestedExamBoard,
-        effectiveQType,
-        normalizedDifficulty,
-        finalCleanList.length + 1
-      );
-      for (const sq of synthReplenish) {
-        finalCleanList.push(sq);
+      console.log(`[Questions Service] Reabastecendo ${neededCount} questão(ões) de alto nível para atingir ${questionCount}...`);
+
+      // 1. Prioritize verified real exam questions from local bank matching this material or subject
+      const bankCandidates = (db.questions || []).filter((bq) => {
+        if (!bq || !bq.questionText) return false;
+        const matchMat = bq.materialId === primaryMaterialId;
+        const matchSubj = (bq.subject || '').toLowerCase() === (primarySubject || '').toLowerCase();
+        if (!matchMat && !matchSubj) return false;
+        const norm = normalizeForFinalDedup(bq.questionText);
+        return norm.length > 15 && !seenTextsAll.has(norm);
+      });
+
+      if (bankCandidates.length > 0) {
+        const pickedFromBank = bankCandidates.slice(0, neededCount);
+        for (const pq of pickedFromBank) {
+          const norm = normalizeForFinalDedup(pq.questionText);
+          seenTextsAll.add(norm);
+          finalCleanList.push({
+            ...pq,
+            id: `qst-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+            attempts: 0,
+            correctAttempts: 0,
+          });
+        }
+      }
+
+      // 2. If still needed, run a quick targeted mini-call with Gemini 3.8 Flash for the missing items
+      if (finalCleanList.length < questionCount) {
+        const stillNeeded = questionCount - finalCleanList.length;
+        try {
+          const rawDocText = targetSummaries[0]?.summaryText || targetSummaries[0]?.sampleText || targetSummaries[0]?.title || '';
+          const targetedSlices = partitionDocumentAcrossBreadth(rawDocText, stillNeeded, finalCleanList.length + 5);
+          const aiSupplements = await generateQuestionsForChunk(
+            targetSummaries,
+            false,
+            99,
+            stillNeeded,
+            `Questão complementar de alto padrão examinador (${stillNeeded} item inédito)`,
+            targetedSlices,
+            finalCleanList
+          );
+          if (Array.isArray(aiSupplements)) {
+            for (const asq of aiSupplements) {
+              const norm = normalizeForFinalDedup(asq.questionText || '');
+              if (norm.length > 15 && !seenTextsAll.has(norm)) {
+                seenTextsAll.add(norm);
+                finalCleanList.push(asq);
+                if (finalCleanList.length >= questionCount) break;
+              }
+            }
+          }
+        } catch (miniErr) {
+          console.warn('[Questions Service] Mini-chamada de reabastecimento por IA falhou:', miniErr);
+        }
+      }
+
+      // 3. Absolute safety net only if offline and bank is exhausted
+      if (finalCleanList.length < questionCount) {
+        const stillNeeded = questionCount - finalCleanList.length;
+        const rawDocText = targetSummaries[0]?.summaryText || targetSummaries[0]?.sampleText || targetSummaries[0]?.title || '';
+        const synthReplenish = synthesizeQuestionsFromSummaryText(
+          rawDocText,
+          stillNeeded,
+          primaryMaterialId,
+          sourceSummaryTitle,
+          primarySubject,
+          requestedExamBoard,
+          effectiveQType,
+          normalizedDifficulty,
+          finalCleanList.length + 7
+        );
+        for (const sq of synthReplenish) {
+          finalCleanList.push(sq);
+        }
       }
     }
 

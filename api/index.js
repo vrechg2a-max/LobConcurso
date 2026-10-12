@@ -114,7 +114,7 @@ Art. 1\xBA a 6\xBA - Da Prote\xE7\xE3o Integral e Crit\xE9rios Et\xE1rios
 
 ALERTA - Marco Temporal Et\xE1rio: O crit\xE9rio de 12 ANOS INCOMPLETOS \xE9 rigorosamente cronol\xF3gico. No exato dia do 12\xBA anivers\xE1rio a pessoa passa \xE0 condi\xE7\xE3o jur\xEDdica de adolescente para todos os efeitos legais.
 
-MNEM\xD4NICO - 12I - 18 - 21E: 12 Incompletos (Crian\xE7a) | at\xE9 18 (Adolescente) | at\xE9 21 Excepcional.
+Crit\xE9rios Et\xE1rios Legais: Crian\xE7a (at\xE9 12 anos incompletos); Adolescente (entre 12 e 18 anos); Aplica\xE7\xE3o excepcional (entre 18 e 21 anos nos casos expressos em lei).
 
 [\xDALTIMO ARTIGO PROCESSADO: Artigo 6]`,
       createdAt: new Date(Date.now() - 864e5 * 3).toISOString(),
@@ -145,7 +145,7 @@ Art. 312 a 316 - Peculato e Concuss\xE3o
 
 ALERTA - N\xFAcleo Exigir vs Solicitar: Na Concuss\xE3o a conduta t\xEDpica \xE9 EXIGIR (imposi\xE7\xE3o intimidat\xF3ria). Na Corrup\xE7\xE3o Passiva a conduta \xE9 SOLICITAR ou RECEBER.
 
-MNEM\xD4NICO - CON-EXI / PAS-SOL: CONcuss\xE3o = EXIge | Corrup\xE7\xE3o PASsiva = SOLicita ou recebe.
+Diferencia\xE7\xE3o T\xEDpica de Condutas: Concuss\xE3o configura-se pela exig\xEAncia impositiva da vantagem (verbo exigir); Corrup\xE7\xE3o Passiva configura-se pela solicita\xE7\xE3o, recebimento ou aceita\xE7\xE3o de promessa de vantagem.
 
 [\xDALTIMO ARTIGO PROCESSADO: Artigo 316]`,
       createdAt: new Date(Date.now() - 864e5 * 2).toISOString(),
@@ -679,10 +679,11 @@ app.post("/api/generate-flashcards", async (req, res) => {
     let primaryMaterialId = materialId || "mat-visualizer";
     const cleanContent = (text) => {
       if (!text) return "";
-      if (!text.includes("<html") && !text.includes("<div") && !text.includes("<!DOCTYPE")) {
-        return text.trim();
+      let cleaned = String(text);
+      if (cleaned.includes("<html") || cleaned.includes("<div") || cleaned.includes("<!DOCTYPE")) {
+        cleaned = cleaned.replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<div class=["']header-banner["'][\s\S]*?<\/div>/gi, "").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"');
       }
-      return text.replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<div class=["']header-banner["'][\s\S]*?<\/div>/gi, "").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/\s{2,}/g, " ").trim();
+      return cleaned.replace(/\bcite:\s*\d+\b/gi, "").replace(/\[\s*cite:\s*\d+\s*\]/gi, "").replace(/\(\s*cite:\s*\d+\s*\)/gi, "").replace(/\b([BCDFGHJKLMNPQRSTVWXYZ])\s+([a-záéíóúâêôãõç]{2,})\b/g, "$1$2").replace(/\bA\s+tividade\b/gi, "Atividade").replace(/\bA\s+utor\b/gi, "Autor").replace(/\bA\s+umento\b/gi, "Aumento").replace(/\bI\s+mputab/gi, "Imputab").replace(/\bT\s+eoria\b/gi, "Teoria").replace(/\bC\s+rime\b/gi, "Crime").replace(/\bP\s+ena\b/gi, "Pena").replace(/\bT\s+empo\b/gi, "Tempo").replace(/\bL\s+ugar\b/gi, "Lugar").replace(/\s{2,}/g, " ").trim();
     };
     if (directSummaryText && directSummaryText.trim().length > 0) {
       combinedSummariesText = `[TEXTO DE ESTUDO BASE - LEI SECA / RESUMO T\xC1TICO]
@@ -1215,7 +1216,7 @@ function getOrderedModels(models) {
   }
   return [...models].sort((a, b) => (modelCooldowns.get(a) || 0) - (modelCooldowns.get(b) || 0));
 }
-async function generateContentWithRetryAndFallback(ai, requestParams, modelsToTry = ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.8-flash"], timeoutPerAttemptMs = 45e3, totalGlobalDeadlineMs = 11e4) {
+async function generateContentWithRetryAndFallback(ai, requestParams, modelsToTry = ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"], timeoutPerAttemptMs = 45e3, totalGlobalDeadlineMs = 11e4) {
   let lastError = null;
   const orderedModels = getOrderedModels(modelsToTry);
   const startTime = Date.now();
@@ -1235,7 +1236,7 @@ async function generateContentWithRetryAndFallback(ai, requestParams, modelsToTr
         thinkingLevel: model === "gemini-3.1-flash-lite" ? ThinkingLevel.MINIMAL : ThinkingLevel.LOW
       };
     }
-    const maxAttemptsForModel = model === "gemini-3.1-flash-lite" ? 3 : hasAlternativeModel ? 1 : 2;
+    const maxAttemptsForModel = model === "gemini-3.8-flash" ? 3 : hasAlternativeModel ? 1 : 2;
     for (let attempt = 1; attempt <= maxAttemptsForModel; attempt++) {
       const remainingNow = totalGlobalDeadlineMs - (Date.now() - startTime);
       if (remainingNow < 4e3) break;
@@ -1246,9 +1247,23 @@ async function generateContentWithRetryAndFallback(ai, requestParams, modelsToTr
             effectiveTimeout / 1e3
           )}s, remaining budget: ${Math.round(remainingNow / 1e3)}s)...`
         );
+        let normalizedContents = requestParams.contents;
+        if (Array.isArray(normalizedContents)) {
+          const isArrayOfParts = normalizedContents.some(
+            (item) => item && (item.inlineData || item.text !== void 0 && !item.parts && !item.role)
+          );
+          if (isArrayOfParts) {
+            normalizedContents = [
+              {
+                role: "user",
+                parts: normalizedContents
+              }
+            ];
+          }
+        }
         const callPromise = ai.models.generateContent({
           model,
-          contents: requestParams.contents,
+          contents: normalizedContents,
           config: modelConfig
         });
         let timerId;
@@ -1346,30 +1361,18 @@ app.post("/api/mascot-chat", async (req, res) => {
 - Disciplina em Estudo: ${activeSubject || "Geral"}
 - Resumo / Material Aberto: ${activeMaterialTitle || "Nenhum material selecionado"}`;
     }
-    const systemInstruction = `Voc\xEA \xE9 o Mascote Examinador IA da plataforma de estudos LOB Concursos.
-Voc\xEA atua como um tutor e examinador de elite para concursos p\xFAblicos no Brasil (especialista em Cebraspe, FGV, FCC, VUNESP, AOCP, Cesgranrio, etc.).
+    const systemInstruction = `Voc\xEA \xE9 o Lobo T\xE1tico (Mascote Examinador IA) da plataforma LOB Concursos.
 
-SEU PAPEL:
-- Amig\xE1vel, vibrante, motivador e rigoroso com a t\xE9cnica jur\xEDdica e gramatical brasileira.
-- O candidato \xE9 quem est\xE1 no comando: responda exatamente \xE0 d\xFAvida dele de forma clara, did\xE1tica e de f\xE1cil memoriza\xE7\xE3o.
-- Dom\xEDnio total de:
-  1. Letra da Lei Seca (CF/88, CP, CPP, CC, CPC, Lei 8.112/90, Lei 8.069/90 - ECA, Lei 13.022/14, Lei 14.133/21, Lei 8.429/92, Lei 13.869/19 - Abuso de Autoridade, etc.).
-  2. Pegadinhas cl\xE1ssicas de bancas (Cebraspe Certo/Errado, FGV, FCC).
-  3. Mnem\xF4nicos e esquemas t\xE1ticos.
-  4. Resolu\xE7\xE3o passo a passo de quest\xF5es e d\xFAvidas de provas.
-  5. Metodologia de estudos de alto rendimento.${contextualInfo}
-
-DIRETRIZES DE FORMATA\xC7\xC3O E RESPOSTA (ESTILO GEMINI):
-1. Use formata\xE7\xE3o Markdown rica:
-   - Destaque termos decisivos, prazos e palavras-chave em **negrito**.
-   - Use t\xF3picos (\u2022) organizados para esquematizar regras, requisitos e diferen\xE7as.
-   - Quando apropriado, inclua blocos tem\xE1ticos:
-     - \u{1F6A8} **Alerta de Pegadinha da Banca:** (explicando trocas de palavras como "salvo" por "inclusive", "indeleg\xE1vel" por "deleg\xE1vel", etc.).
-     - \u{1F9E0} **Mnem\xF4nico T\xE1tico:** (siglas ou frases de memoriza\xE7\xE3o).
-     - \u{1F4A1} **Exemplo Pr\xE1tico:** (caso hipot\xE9tico simplificado aplicando a norma).
-2. Se o usu\xE1rio pedir para ser testado ou desafiado, crie 1 pergunta estilo concurso (estilo Cebraspe Certo/Errado ou M\xFAltipla Escolha) e convide-o a responder!
-3. Se o usu\xE1rio enviar uma quest\xE3o ou assertiva com d\xFAvida, analise a fundamenta\xE7\xE3o jur\xEDdica, indique qual alternativa est\xE1 correta e aponte o erro das demais.
-4. Responda sempre em Portugu\xEAs do Brasil com excelente clareza pedag\xF3gica.`;
+DIRETRIZES FUNDAMENTAIS (RIGOR CONTRA PROLIXIDADE):
+1. SEJA ULTRA-CONCISO E DIRETO AO PONTO. O candidato precisa de resposta r\xE1pida, t\xE1tica e sem perda de tempo.
+2. NUNCA use introdu\xE7\xF5es vazias (ex: "Ol\xE1 futuro aprovado! Excelente d\xFAvida!", "Que \xF3tima pergunta!", etc.). Comece IMEDIATAMENTE respondendo ao cerne da d\xFAvida.
+3. M\xE1ximo de 2 a 4 par\xE1grafos curtos ou t\xF3picos objetivos. Sem text\xF5es.
+4. Destaque palavras-chave, artigos de lei, prazos e compet\xEAncias privativas em **negrito**.
+5. Se for d\xFAvida sobre uma quest\xE3o ou item de prova:
+   - Responda em 1 frase o motivo do gabarito.
+   - Aponte o dispositivo legal exato (ex: Art. 312, \xA7 1\xBA do CP).
+   - Se houver pegadinha da banca, explique-a em 1 linha (\u{1F6A8} **Pegadinha da Banca:** ...).
+6. Sem despedidas longas ou clich\xEAs motivacionais repetitivos. Seja cir\xFArgico, did\xE1tico e profissional.${contextualInfo}`;
     const recentMessages = messages.slice(-16);
     const contents = recentMessages.map((m) => ({
       role: m.role === "assistant" || m.role === "model" ? "model" : "user",
@@ -1388,9 +1391,9 @@ DIRETRIZES DE FORMATA\xC7\xC3O E RESPOSTA (ESTILO GEMINI):
           temperature: 0.5
         }
       },
-      ["gemini-3.1-flash-lite", "gemini-3.8-flash"],
-      25e3,
-      5e4
+      ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"],
+      35e3,
+      6e4
     );
     const reply = aiResponse.text?.trim() || "Ol\xE1! Como posso te ajudar na sua prepara\xE7\xE3o para o concurso hoje?";
     res.json({
@@ -1404,6 +1407,87 @@ DIRETRIZES DE FORMATA\xC7\xC3O E RESPOSTA (ESTILO GEMINI):
     });
   }
 });
+async function extractTextFromPdfBuffer(pdfBuffer) {
+  let extractedText = "";
+  let totalPages = 1;
+  let docTitle = "";
+  try {
+    const pdfParseModule = await import("pdf-parse");
+    const PDFParserClass = pdfParseModule.PDFParse || pdfParseModule.default?.PDFParse;
+    if (typeof PDFParserClass === "function") {
+      try {
+        const parser = new PDFParserClass({ data: new Uint8Array(pdfBuffer) });
+        if (typeof parser.getText === "function") {
+          const parsed = await parser.getText();
+          totalPages = parsed.total || (parsed.pages ? parsed.pages.length : 1);
+          extractedText = (parsed.text || "").replace(/-- \d+ of \d+ --/g, "").trim();
+          if (typeof parser.getInfo === "function") {
+            try {
+              const info = await parser.getInfo();
+              const rawTitle = info?.info?.Title;
+              if (rawTitle) {
+                const t = String(rawTitle).trim();
+                if (t && !t.toLowerCase().includes("untitled")) {
+                  docTitle = t;
+                }
+              }
+            } catch {
+            }
+          }
+          if (typeof parser.destroy === "function") {
+            await parser.destroy();
+          }
+        }
+      } catch (classErr) {
+        console.warn("[PDF Extract] Class-based PDFParse note:", classErr?.message);
+      }
+    } else {
+      const defaultExport = pdfParseModule.default || pdfParseModule;
+      if (typeof defaultExport === "function") {
+        try {
+          const parsed = await defaultExport(pdfBuffer);
+          totalPages = parsed.numpages || parsed.total || 1;
+          extractedText = (parsed.text || "").replace(/-- \d+ of \d+ --/g, "").trim();
+          if (parsed.info?.Title) {
+            const t = String(parsed.info.Title).trim();
+            if (t && !t.toLowerCase().includes("untitled")) {
+              docTitle = t;
+            }
+          }
+        } catch (fnErr) {
+          console.warn("[PDF Extract] Function-based pdf-parse note:", fnErr?.message);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[PDF Extract] pdf-parse import issue:", err?.message);
+  }
+  if (!extractedText || extractedText.length < 50) {
+    try {
+      const rawPdfString = pdfBuffer.toString("latin1");
+      const textBlockRegex = /BT[\s\S]*?ET/g;
+      const matches = rawPdfString.match(textBlockRegex);
+      if (matches && matches.length > 0) {
+        const streamTexts = [];
+        for (const block of matches) {
+          const strMatches = block.match(/\(([^)]+)\)/g);
+          if (strMatches) {
+            const blockStr = strMatches.map((s) => s.slice(1, -1)).join(" ");
+            if (blockStr.trim().length > 3) {
+              streamTexts.push(blockStr);
+            }
+          }
+        }
+        const combined = streamTexts.join(" ").replace(/\\[nrtbf]/g, " ").replace(/\s+/g, " ").trim();
+        if (combined.length > 80) {
+          extractedText = combined;
+        }
+      }
+    } catch {
+    }
+  }
+  return { text: extractedText, totalPages, title: docTitle || void 0 };
+}
 app.post("/api/extract-pdf-text", async (req, res) => {
   try {
     const { fileBase64, fileUrl, fileName } = req.body;
@@ -1415,35 +1499,11 @@ app.post("/api/extract-pdf-text", async (req, res) => {
       base64Data = base64Data.split("base64,")[1];
     }
     const pdfBuffer = Buffer.from(base64Data, "base64");
-    let extractedText = "";
-    let totalPages = 1;
     let docTitle = fileName ? fileName.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ") : "";
-    try {
-      const pdfParseModule = await import("pdf-parse");
-      const PDFParserClass = pdfParseModule.PDFParse || pdfParseModule.default?.PDFParse || pdfParseModule.default;
-      if (PDFParserClass) {
-        const parser = new PDFParserClass({ data: pdfBuffer });
-        try {
-          const parsed = await parser.getText();
-          totalPages = parsed.total || (parsed.pages ? parsed.pages.length : 1);
-          extractedText = (parsed.text || "").replace(/-- \d+ of \d+ --/g, "").trim();
-          if (typeof parser.getInfo === "function") {
-            const info = await parser.getInfo();
-            if (info && info.info && info.info.Title) {
-              const t = info.info.Title.trim();
-              if (t && !t.toLowerCase().includes("untitled")) {
-                docTitle = t;
-              }
-            }
-          }
-        } finally {
-          if (typeof parser.destroy === "function") {
-            await parser.destroy();
-          }
-        }
-      }
-    } catch (parseErr) {
-      console.warn("PDFParse local extraction warning:", parseErr?.message);
+    const { text: parsedText, totalPages, title: parsedTitle } = await extractTextFromPdfBuffer(pdfBuffer);
+    let extractedText = parsedText;
+    if (parsedTitle && !docTitle) {
+      docTitle = parsedTitle;
     }
     if (extractedText.length < 30 && process.env.GEMINI_API_KEY) {
       try {
@@ -1471,7 +1531,7 @@ app.post("/api/extract-pdf-text", async (req, res) => {
               }
             ]
           },
-          ["gemini-3.1-flash-lite", "gemini-3.8-flash"]
+          ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"]
         );
         const geminiText = geminiRes.text?.trim();
         if (geminiText && geminiText.length > extractedText.length) {
@@ -1485,6 +1545,7 @@ app.post("/api/extract-pdf-text", async (req, res) => {
     if (isCorrupt) {
       extractedText = "";
     }
+    extractedText = extractedText.replace(/\[cite:\s*[\d,\s]+\]/gi, "").replace(/\[citation\s+needed\]/gi, "").replace(/^[ \t]*---+[ \t]*\[?(?:P[ÁA]GINA|PAGE)\s+\d+(?:\s+(?:de|of)\s+\d+)?\]?[ \t]*---+[ \t]*$/gim, "").replace(/^[ \t]*\[(?:P[ÁA]GINA|PAGE)\s+\d+(?:\s+(?:de|of)\s+\d+)?\][ \t]*$/gim, "").replace(/^[ \t]*(?:P[ÁA]GINA|PAGE)\s+\d+\s+(?:de|of)\s+\d+[ \t]*$/gim, "").replace(/^[ \t]*[•·\*\-\–—\s]+$/gm, "").replace(/[ \t]+([.,;:!?)\]])/g, "$1").replace(/[ \t]{2,}/g, " ").trim();
     if (!extractedText.trim()) {
       return res.status(422).json({
         error: "N\xE3o foi poss\xEDvel extrair o texto deste arquivo PDF. O arquivo pode estar vazio, protegido por senha ou conter apenas imagens sem OCR."
@@ -1513,28 +1574,62 @@ app.post("/api/process-pdf", async (req, res) => {
       chapterIndex,
       processNextChapter = false,
       previousSummary = "",
-      manualLastArticle = null
+      manualLastArticle = null,
+      lastProcessedTopic = null,
+      extractedText: incomingExtractedText = "",
+      summaryDensity = "exhaustive"
     } = req.body;
     let base64Data = "";
     let currentToken = typeof fileToken === "string" && fileToken.trim() ? fileToken.trim() : "";
     let cleanFileName = fileName || "Documento_Normativo_Concurso.pdf";
+    let fullDocText = typeof incomingExtractedText === "string" ? incomingExtractedText.trim() : "";
+    let totalDocPages = 1;
     if (currentToken && pdfBase64Cache.has(currentToken)) {
       const cached = pdfBase64Cache.get(currentToken);
       base64Data = cached.data;
+      if (!fullDocText && cached.extractedText) {
+        fullDocText = cached.extractedText;
+      }
       if (!fileName && cached.cleanFileName) {
         cleanFileName = cached.cleanFileName;
+      }
+      if (cached.totalPages) {
+        totalDocPages = cached.totalPages;
       }
     } else if (fileUrl) {
       base64Data = fileUrl.includes("base64,") ? fileUrl.split("base64,")[1] : fileUrl;
       currentToken = currentToken || `pdf_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
       cleanOldPdfCache();
-      pdfBase64Cache.set(currentToken, { data: base64Data, cleanFileName, cachedAt: Date.now() });
-    } else {
+      pdfBase64Cache.set(currentToken, {
+        data: base64Data,
+        cleanFileName,
+        cachedAt: Date.now(),
+        extractedText: fullDocText || void 0,
+        totalPages: totalDocPages
+      });
+    } else if (!fullDocText) {
       return res.status(400).json({
         error: "Os dados do arquivo PDF n\xE3o foram fornecidos ou a sess\xE3o tempor\xE1ria expirou. Por favor, anexe o arquivo novamente."
       });
     }
-    if (!base64Data) {
+    if (!fullDocText && base64Data) {
+      try {
+        const buf = Buffer.from(base64Data, "base64");
+        const extracted = await extractTextFromPdfBuffer(buf);
+        if (extracted.text) {
+          fullDocText = extracted.text;
+          totalDocPages = extracted.totalPages;
+        }
+      } catch (err) {
+        console.warn("[process-pdf] Extra\xE7\xE3o de texto em background falhou:", err?.message);
+      }
+    }
+    if (fullDocText && currentToken && pdfBase64Cache.has(currentToken)) {
+      const cached = pdfBase64Cache.get(currentToken);
+      cached.extractedText = fullDocText;
+      cached.totalPages = totalDocPages;
+    }
+    if (!base64Data && !fullDocText) {
       return res.status(400).json({ error: "PDF file data is empty or invalid." });
     }
     if (!process.env.GEMINI_API_KEY) {
@@ -1550,51 +1645,199 @@ app.post("/api/process-pdf", async (req, res) => {
         }
       }
     });
-    const systemInstruction = `Voc\xEA \xE9 um examinador s\xEAnior de concursos p\xFAblicos de alto n\xEDvel (padr\xE3o Cebraspe, FGV e FCC).
-Sua fun\xE7\xE3o \xE9 receber textos de 'lei seca' ou arquivos anexos e realizar o processamento cognitivo e esquematiza\xE7\xE3o t\xE1tica de alto n\xEDvel com EXAUSTIVIDADE ABSOLUTA, gerando c\xF3digo HTML estruturado com CSS embutido, preparado para o motor WeasyPrint e impress\xE3o A4 em alta fidelidade.
+    const systemInstruction = `Voc\xEA \xE9 um examinador e professor s\xEAnior especializado em prepara\xE7\xE3o para concursos p\xFAblicos de alto n\xEDvel (padr\xE3o Cebraspe, FGV e FCC).
+Sua miss\xE3o \xE9 receber textos de leis secas, c\xF3digos normativos ou apostilas te\xF3ricas em PDF e produzir uma ESQUEMATIZA\xC7\xC3O T\xC1TICA DE ALTO RENDIMENTO em formato HTML estruturado com CSS embutido (padr\xE3o A4 / WeasyPrint).
 
-ARQUITETURA DE GERA\xC7\xC3O (A INTELIG\xCANCIA & O MOTOR):
-1. O PROCESSAMENTO COGNITIVO (A INTELIG\xCANCIA):
-   - Voc\xEA analisa semanticamente cada artigo, par\xE1grafo, inciso e al\xEDnea sem rodar um simples extrator raso.
-   - Sua rede neural faz o trabalho pesado de interpreta\xE7\xE3o jur\xEDdica e formata\xE7\xE3o visual exaustiva.
-   - Extraia e destaque cirurgicamente com <span class="keyword">:
-     * Prazos (ex: 03 (TR\xCAS) MESES, 18 (DEZOITO) MESES, 90 DIAS, 45 DIAS, 3 ANOS, 22h \xE0s 05h, 48h)
-     * Idades e crit\xE9rios et\xE1rios (ex: 12 ANOS INCOMPLETOS, 12 e 18 ANOS, MAIOR DE 12 ANOS, MENOR DE 14 ANOS, MENOR DE 16 ANOS, MAIORES DE 18 ANOS, SUPERIOR A 21 ANOS)
-     * Palavras de restri\xE7\xE3o e exce\xE7\xF5es (ex: SALVO, EXCETO, N\xC3O CONSTITUI MOTIVO, IRREVOG\xC1VEL, \xC9 VEDADA, N\xC3O PODEM ADOTAR, SEM O USO DE CASTIGO F\xCDSICO ou TRATAMENTO CRUEL OU DEGRADANTE, OBRIGAT\xD3RIA, DISPENSA)
-     * Qu\xF3runs, quantitativos e san\xE7\xF5es penais (ex: 1 (UM) ACOMPANHANTE, 05 (CINCO) MEMBROS, 04 (QUATRO) ANOS, CRIME, Deten\xE7\xE3o 2 a 4 anos e multa, Reclus\xE3o 4 a 10 anos)
-     * Novidades legislativas e altera\xE7\xF5es recentes (ex: Novidade LC 15.240/2025, Novo em 2026).
+\u{1F3AF} DIRETRIZ FUNDAMENTAL: ORGANIZAR AS IDEIAS E O QUE MAIS CAI EM PROVA (PROIBIDO CORTAR MAT\xC9RIA)
+1. N\xC3O REALIZE CONDENSA\xC7\xC3O RASA: O objetivo N\xC3O \xE9 encolher um documento de 30 p\xE1ginas para 2 p\xE1ginas sacrificando o conte\xFAdo. Em concursos p\xFAblicos, as bancas cobram precisamente as exce\xE7\xF5es, os prazos, as compet\xEAncias e as nuances de cada par\xE1grafo e inciso.
+2. ORGANIZA\xC7\xC3O PEDAG\xD3GICA E ESTRUTURA\xC7\xC3O T\xC1TICA: O objetivo \xE9 transformar a prosa densa em esquemas visuais claros, memoriz\xE1veis e de consulta r\xE1pida:
+   - Mapeie CADA ARTIGO, SE\xC7\xC3O OU T\xD3PICO relevante sem pular dispositivos.
+   - Discrimine todos os incisos e al\xEDneas em t\xF3picos claros (com marcadores ou listas numeradas). \xC9 PROIBIDO juntar 8 incisos em uma frase gen\xE9rica.
+   - Aplique negrito e <span class="keyword"> cirurgicamente nos termos decisivos:
+     * Prazos (ex: 15 DIAS, 30 DIAS, 48 HORAS, 5 ANOS, 120 DIAS)
+     * Idades e marcos temporais (ex: 12 ANOS INCOMPLETOS, MENOR DE 14 ANOS, MAIOR DE 18 ANOS, 60 ANOS OU MAIS)
+     * Exce\xE7\xF5es e ressalvas (ex: SALVO, EXCETO, RESSALVADOS, N\xC3O CONSTITUI MOTIVO, INDEPENDENTEMENTE DE)
+     * Proibi\xE7\xF5es e veda\xE7\xF5es (ex: \xC9 VEDADO, \xC9 PROIBIDO, N\xC3O PODEM, NULIDADE)
+     * Qu\xF3runs, quantitativos e percentuais (ex: MAIORIA ABSOLUTA, 2/3 DOS MEMBROS, 3/5, 1/3)
+     * San\xE7\xF5es (ex: DETEN\xC7\xC3O de 1 a 3 anos, RECLUS\xC3O de 4 a 10 anos, MULTA, DEMISS\xC3O)
+3. TABELAS COMPARATIVAS T\xC1TICAS (.tabela-tatica):
+   - Sempre que o tema envolver conceitos contrapostos, classifica\xE7\xF5es paralelas, prazos comparativos ou compet\xEAncias (ex: Compet\xEAncia Privativa da Uni\xE3o vs Concorrente; Dolo vs Culpa; Crimes Afian\xE7\xE1veis vs Inafian\xE7\xE1veis; Prescri\xE7\xE3o vs Decad\xEAncia), GERE UMA TABELA COMPARATIVA organizando as diferen\xE7as com clareza.
+4. ALERTAS DE PEGADINHA DE BANCA (.alert-box):
+   - Destaque as cascas de banana cl\xE1ssicas que as bancas (Cebraspe / FGV / FCC) utilizam (ex: troca de palavras 'pode' por 'deve', 'anul\xE1vel' por 'nulo', 'discricion\xE1rio' por 'vinculado').
+5. MNEM\xD4NICOS E EXEMPLOS PR\xC1TICOS:
+   - Inclua caixas de mnem\xF4nicos (.mnemonic-box) para memoriza\xE7\xE3o r\xE1pida de requisitos ou listas taxativas.
+   - Preserve integralmente exemplos e modelos pr\xE1ticos em caixas (.exemplo-box) com .exemplo-certo e .exemplo-errado.`;
+    let suggestedTitle = cleanFileName.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
+    let suggestedSubject = "Direito Constitucional";
+    const lowerName = cleanFileName.toLowerCase();
+    if (lowerName.includes("portugu") || lowerName.includes("gramat") || lowerName.includes("crase") || lowerName.includes("sintaxe") || lowerName.includes("concordanc") || lowerName.includes("regenc") || lowerName.includes("pontuac") || lowerName.includes("redac")) {
+      suggestedSubject = "L\xEDngua Portuguesa";
+    } else if (lowerName.includes("penal") || lowerName.includes("processo penal") || lowerName.includes("cpp") || lowerName.includes("cp")) {
+      suggestedSubject = "Direito Penal";
+    } else if (lowerName.includes("administrativ") || lowerName.includes("8112") || lowerName.includes("licitac") || lowerName.includes("14133")) {
+      suggestedSubject = "Direito Administrativo";
+    }
+    let lastArticleNumber = null;
+    let lastTopicLabel = typeof lastProcessedTopic === "string" ? lastProcessedTopic.trim() : "";
+    if (typeof manualLastArticle === "number" && !isNaN(manualLastArticle)) {
+      lastArticleNumber = manualLastArticle;
+    } else if (manualLastArticle && !isNaN(parseInt(String(manualLastArticle), 10))) {
+      lastArticleNumber = parseInt(String(manualLastArticle), 10);
+    }
+    if (previousSummary) {
+      if (lastArticleNumber === null) {
+        const artMatches = [...previousSummary.matchAll(/\[ÚLTIMO ARTIGO PROCESSADO:\s*(?:Artigo|Art\.\s*|Art\b)?\s*(\d+)[^\]]*\]/gi)];
+        if (artMatches.length > 0) {
+          lastArticleNumber = parseInt(artMatches[artMatches.length - 1][1], 10);
+        } else {
+          const allArtMatches = [...previousSummary.matchAll(/(?:<div class=["']caput["']>|\b)(?:Artigo|Art\.)\s*(\d+)/gi)].map((m) => parseInt(m[1], 10)).filter((n) => !isNaN(n) && n > 0 && n < 3e3);
+          if (allArtMatches.length > 0) {
+            lastArticleNumber = Math.max(...allArtMatches);
+          }
+        }
+      }
+      if (!lastTopicLabel) {
+        const topicMatches = [...previousSummary.matchAll(/\[ÚLTIMO TÓPICO PROCESSADO:\s*(.+?)\]/gi)];
+        if (topicMatches.length > 0) {
+          lastTopicLabel = topicMatches[topicMatches.length - 1][1].trim();
+        } else {
+          const secMatches = [...previousSummary.matchAll(/<div class=["'](?:section-title|artigo-header)["'][^>]*>([^<]+)<\/div>/gi)];
+          if (secMatches.length > 0) {
+            lastTopicLabel = secMatches[secMatches.length - 1][1].trim();
+          }
+        }
+      }
+    }
+    const hasNumberedArticles = lastArticleNumber !== null || /(?:Artigo|Art\.)\s*\d+/i.test(previousSummary || "");
+    let resumeInstruction = "";
+    if (hasNumberedArticles && lastArticleNumber !== null) {
+      resumeInstruction = `O bloco anterior encerrou em: [\xDALTIMO ARTIGO PROCESSADO: Artigo ${lastArticleNumber}]. Inicie a extra\xE7\xE3o ESTRITAMENTE a partir do Artigo ${lastArticleNumber + 1} presente neste arquivo PDF. \xC9 terminantemente PROIBIDO repetir dispositivos j\xE1 abordados.`;
+    } else if (lastTopicLabel) {
+      resumeInstruction = `O bloco anterior encerrou no tema: [\xDALTIMO T\xD3PICO PROCESSADO: ${lastTopicLabel}]. Inicie a extra\xE7\xE3o ESTRITAMENTE a partir dos t\xF3picos subsequentes a esse tema neste arquivo PDF. \xC9 terminantemente PROIBIDO repetir t\xF3picos j\xE1 abordados.`;
+    } else {
+      resumeInstruction = `Inicie a extra\xE7\xE3o sequencial a partir do in\xEDcio ou dos t\xF3picos/artigos subsequentes do arquivo PDF sem repetir o que j\xE1 foi extra\xEDdo.`;
+    }
+    let activeTextChunk = "";
+    let isFinishedPrematurely = false;
+    let currentChunkStartOffset = 0;
+    let currentChunkEndOffset = 0;
+    let hasMoreDocContent = false;
+    const maxChunkLen = summaryDensity === "concise" ? 14e3 : 2e4;
+    if (fullDocText && fullDocText.length > 0) {
+      if (processNextChapter) {
+        let searchOffset = 0;
+        if (lastArticleNumber !== null) {
+          const nextArtPattern = new RegExp(`(?:Artigo|Art\\.)\\s*0*${lastArticleNumber + 1}\\b`, "i");
+          const nextMatch = fullDocText.search(nextArtPattern);
+          if (nextMatch !== -1) {
+            searchOffset = nextMatch;
+          } else {
+            const currArtPattern = new RegExp(`(?:Artigo|Art\\.)\\s*0*${lastArticleNumber}\\b`, "i");
+            const currMatch = fullDocText.search(currArtPattern);
+            if (currMatch !== -1) {
+              searchOffset = Math.min(fullDocText.length, currMatch + 80);
+            }
+          }
+        } else if (lastTopicLabel) {
+          const cleanLabel = lastTopicLabel.slice(0, 30).trim();
+          const topicIdx = fullDocText.indexOf(cleanLabel);
+          if (topicIdx !== -1) {
+            searchOffset = Math.min(fullDocText.length, topicIdx + cleanLabel.length);
+          }
+        }
+        currentChunkStartOffset = searchOffset;
+        const remainingText = fullDocText.slice(searchOffset).trim();
+        if (remainingText.length < 150) {
+          isFinishedPrematurely = true;
+          hasMoreDocContent = false;
+          currentChunkEndOffset = fullDocText.length;
+        } else {
+          if (remainingText.length <= maxChunkLen) {
+            activeTextChunk = remainingText;
+            currentChunkEndOffset = fullDocText.length;
+            hasMoreDocContent = false;
+          } else {
+            let cutIdx = remainingText.lastIndexOf("\n", maxChunkLen);
+            if (cutIdx < maxChunkLen * 0.7) cutIdx = maxChunkLen;
+            activeTextChunk = remainingText.slice(0, cutIdx).trim();
+            currentChunkEndOffset = searchOffset + cutIdx;
+            hasMoreDocContent = fullDocText.length - currentChunkEndOffset > 250;
+          }
+        }
+      } else {
+        currentChunkStartOffset = 0;
+        if (fullDocText.length <= maxChunkLen) {
+          activeTextChunk = fullDocText;
+          currentChunkEndOffset = fullDocText.length;
+          hasMoreDocContent = false;
+        } else {
+          let cutIdx = fullDocText.lastIndexOf("\n", maxChunkLen);
+          if (cutIdx < maxChunkLen * 0.7) cutIdx = maxChunkLen;
+          activeTextChunk = fullDocText.slice(0, cutIdx).trim();
+          currentChunkEndOffset = cutIdx;
+          hasMoreDocContent = fullDocText.length - currentChunkEndOffset > 250;
+        }
+      }
+    }
+    if (isFinishedPrematurely) {
+      let finalSummary = previousSummary || "";
+      if (!finalSummary.includes("CONCLU\xCDDO NA \xCDNTEGRA") && !finalSummary.includes("CONCLU\xCDDA NA \xCDNTEGRA")) {
+        finalSummary += `
+<div class="continuidade" style="text-align: center; font-weight: bold; color: #1e293b; margin-top: 15px; padding: 12px; background-color: #e2e8f0; border: 1px solid #cbd5e1; border-radius: 6px;">[DOCUMENTO CONCLU\xCDDO NA \xCDNTEGRA]</div>`;
+      }
+      return res.json({
+        success: true,
+        fileToken: currentToken,
+        summaryText: finalSummary,
+        suggestedTitle,
+        suggestedSubject,
+        fileName: cleanFileName,
+        lastArticle: lastArticleNumber,
+        isFinished: true,
+        hasMoreContent: false,
+        totalDocLength: fullDocText ? fullDocText.length : void 0,
+        processedDocLength: fullDocText ? fullDocText.length : void 0,
+        progressPercent: 100,
+        totalPages: totalDocPages
+      });
+    }
+    const chunkContinuityDirective = hasMoreDocContent ? `
+\u26A0\uFE0F ATEN\xC7\xC3O CR\xCDTICA (DOCUMENTO LONGO EM M\xDALTIPLOS LOTES):
+Este material em PDF \xE9 extenso e possui mais conte\xFAdo ap\xF3s este lote.
+Voc\xEA est\xE1 processando o Lote Atual. \xC9 TERMINANTEMENTE PROIBIDO emitir "[DOCUMENTO CONCLU\xCDDO NA \xCDNTEGRA]" ou "[LEGISLA\xC7\xC3O CONCLU\xCDDA NA \xCDNTEGRA]".
+Ao final deste bloco, voc\xEA DEVE indicar OBRIGATORIAMENTE a tag com o \xFAltimo artigo ou t\xF3pico processado:
+<div class="continuidade" style="text-align: right; font-size: 8.5pt; color: #64748b; margin-top: 15px;">[\xDALTIMO ARTIGO PROCESSADO: Artigo X]</div>
+ou [\xDALTIMO T\xD3PICO PROCESSADO: T\xF3pico Y - Nome do T\xF3pico].` : `
+- Se este lote cobrir todo o restante do documento at\xE9 o fim, conclua com:
+<div class="continuidade" style="text-align: center; font-weight: bold; color: #1e293b; margin-top: 15px; padding: 12px; background-color: #e2e8f0; border: 1px solid #cbd5e1; border-radius: 6px;">[DOCUMENTO CONCLU\xCDDO NA \xCDNTEGRA]</div>`;
+    const promptText = processNextChapter ? `Voc\xEA \xE9 um professor examinador especialista em Concursos P\xFAblicos de alto n\xEDvel (bancas Cebraspe, FGV e FCC).
 
-2. O C\xD3DIGO HTML COM CSS EMBUTIDO (PADR\xC3O EDITORIAL WEASYPRINT / A4):
-   - HEADER BANNER (.header-banner):
-     Fundo Chumbo Escuro (#1a202c), padding 16px 20px, texto centralizado, border-radius 4px, margin-bottom 16px.
-     H1: [NOME OFICIAL DA LEI] em caixa alta, branco (#ffffff), negrito (font-weight 800), font-size 16pt.
-     P: [Subt\xEDtulo da esquematiza\xE7\xE3o] em cinza claro (#94a3b8), font-size 9pt.
-   - T\xCDTULOS E CAP\xCDTULOS (.section-title ou <h2>):
-     Fundo cinza suave (#e2e8f0), borda lateral esquerda s\xF3lida em ard\xF3sia escura (#334155, 6px).
-     Texto em caixa alta, negrito, cor chumbo (#1e293b), font-size 11pt, padding 8px 14px, margin 16px 0 12px 0.
-   - CARDS DE ARTIGOS (.artigo-box):
-     Fundo branco (#ffffff), borda suave (#e2e8f0, 1px), cantos arredondados (6px), padding 14px 18px, margin-bottom 14px, box-shadow sutil.
-     Cabe\xE7alho do artigo (.artigo-header): ex: "Art. 1\xBA a 6\xBA - Idades e Prioridade Absoluta" em cor grafite escuro (#0f172a), negrito 700, borda inferior tracejada suave (#e2e8f0).
-     T\xF3picos com marcadores principais (\u2022), subn\xEDveis com c\xEDrculos vazados (\u25E6) ou listas numeradas (1, 2, 3...).
-   - PALAVRAS-CHAVE (.keyword):
-     Cor Vermelho Vivo (#dc2626), font-weight bold, cirurgicamente aplicada a prazos, exce\xE7\xF5es, idades e proibi\xE7\xF5es.
-   - BOX DE ALERTA DE PEGADINHA (.alert-box ou .alert):
-     Fundo amarelo \xE2mbar claro (#fffbeb), borda (#fde68a), borda lateral esquerda laranja vivo (#ea580c, 5px), border-radius 6px, padding 10px 14px, margin 12px 0, cor do texto (#78350f).
-     T\xEDtulo: ex: \u{1F6A8} ALERTA - [Assunto]:
-   - BOX DE MNEM\xD4NICOS (.mnemonic-box ou .mnemonic):
-     Fundo verde-\xE1gua suave (#f0fdfa), borda tracejada verde-\xE1gua (#0d9488, 1.5px), border-radius 6px, padding 9px 13px, margin 10px 0, cor do texto (#0f766e), texto centralizado.
-     T\xEDtulo com \xEDcone: \u{1F9E0} MNEM\xD4NICO: [T\xEDtulo].
-   - BOX DE EXEMPLOS PR\xC1TICOS (.exemplo-box):
-     Fundo cinza azulado (#f8fafc), borda esquerda azul viva (#0284c7, 5px), padding 10px 14px, margin 12px 0.
-     Classes .exemplo-certo (verde #16a34a, negrito) e .exemplo-errado (vermelho #dc2626, negrito e tachado).
+Trava de Continuidade (Anti-Loop Rigoroso - Modo Duplo: Artigos & T\xF3picos):
+${resumeInstruction}
 
-3. DIRETRIZES DE FORMATA\xC7\xC3O E CONTINUIDADE:
-   - Se o material for processado at\xE9 o final, inclua ao t\xE9rmino:
-     <div class="continuidade" style="text-align: center; font-weight: bold; color: #1e293b; margin-top: 15px; padding: 12px; background-color: #e2e8f0; border: 1px solid #cbd5e1; border-radius: 6px;">[LEGISLA\xC7\xC3O CONCLU\xCDDA NA \xCDNTEGRA]</div>
-   - Se o processamento parar no meio por limite de contexto, finalize indicando:
-     <div class="continuidade" style="text-align: right; font-size: 8.5pt; color: #64748b; margin-top: 15px;">[\xDALTIMO ARTIGO PROCESSADO: Artigo X]</div>
+DIRETRIZES DE OURO (SEM CORTES / DENSIDADE DE CONCURSO):
+1. O objetivo \xE9 ORGANIZAR AS IDEIAS e PRESERVAR TUDO O QUE PODE SER COBRADO EM PROVA. \xC9 terminantemente PROIBIDO cortar artigos, incisos, exce\xE7\xF5es, prazos ou regras para fazer caber em poucas linhas.
+2. Cada artigo ou se\xE7\xE3o deve ser estruturado detalhadamente em sua respectiva caixa <div class="artigo-box">.
+3. Se um artigo tiver incisos ou par\xE1grafos, todos devem estar listados em marcadores (<ul class="artigo-list"> / <ol class="numbered-list">).
+4. Utilize <table class="tabela-tatica"> sempre que houver prazos comparados, compet\xEAncias opostas ou classifica\xE7\xF5es paralelas.
+5. Destaque palavras-chave (<span class="keyword">) em vermelho vivo: prazos, idades, qu\xF3runs, san\xE7\xF5es e express\xF5es restritivas (EXCETO, SALVO, VEDADO, N\xC3O CONSTITUI MOTIVO).
+6. Caixas de pegadinha (<div class="alert-box">) para cascas de banana cl\xE1ssicas de banca e caixas de mnem\xF4nicos (<div class="mnemonic-box">).
+7. Exemplos pr\xE1ticos preservados em <div class="exemplo-box"> com .exemplo-certo e .exemplo-errado.
+${chunkContinuityDirective}
 
-ESTRUTURA CSS BASE PADR\xC3O:
+Retorne APENAS o c\xF3digo HTML v\xE1lido, sem markdown (\`\`\`html).` : `Voc\xEA \xE9 um professor examinador especialista em Concursos P\xFAblicos de alto n\xEDvel (bancas Cebraspe, FGV e FCC).
+Sua miss\xE3o \xE9 realizar a esquematiza\xE7\xE3o t\xE1tica e sem\xE2ntica com EXAUSTIVIDADE ABSOLUTA do material do PDF, gerando c\xF3digo HTML estruturado com CSS embutido no padr\xE3o editorial WeasyPrint / A4.
+
+DIRETRIZES DE OURO (SEM CORTES / DENSIDADE DE CONCURSO):
+1. O objetivo deste material N\xC3O \xC9 REDUZIR O TEXTO PARA CABER EM POUCAS P\xC1GINAS. O objetivo \xE9 ORGANIZAR AS IDEIAS e PRESERVAR TUDO O QUE MAIS PODE CAIR EM UMA PROVA DE CONCURSO.
+2. Em concursos p\xFAblicos, as quest\xF5es de prova atacam justamente as exce\xE7\xF5es, prazos, compet\xEAncias e detalhes espec\xEDficos. N\xE3o fa\xE7a resumos rasos que eliminem os detalhes da mat\xE9ria.
+3. N\xE3o resuma 10 incisos em 1 frase vaga. Mapeie cada inciso e par\xE1grafo na sequ\xEAncia exata com clareza t\xE1tica e destaques em <span class="keyword">.
+4. Utilize tabelas comparativas (<table class="tabela-tatica">) sempre que houver duas ou mais categorias compar\xE1veis (ex: prazos, compet\xEAncias, institutos opostos).
+5. Inclua caixas de pegadinha (<div class="alert-box">) e caixas de mnem\xF4nicos (<div class="mnemonic-box">) nos pontos de alta incid\xEAncia de prova.
+6. Preserve todos os exemplos pr\xE1ticos em <div class="exemplo-box">.
+${chunkContinuityDirective}
+
+ESTRUTURA CSS EMBUTIDA NO <head>:
 <style>
     @page { size: A4 portrait; margin: 12mm 14mm; background-color: #f8fafc; }
     *, *:before, *:after { box-sizing: border-box; }
@@ -1619,6 +1862,12 @@ ESTRUTURA CSS BASE PADR\xC3O:
     .exemplo-box strong, .exemplo strong { color: #0369a1; }
     .exemplo-certo { color: #16a34a; font-weight: bold; }
     .exemplo-errado { color: #dc2626; font-weight: bold; text-decoration: line-through; }
+    .tabela-tatica { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 9pt; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; page-break-inside: avoid; break-inside: avoid; }
+    .tabela-tatica th { background: #1e293b; color: #ffffff; padding: 8px 12px; text-align: left; font-size: 8.5pt; text-transform: uppercase; font-weight: 700; letter-spacing: 0.3px; }
+    .tabela-tatica td { padding: 8px 12px; border-bottom: 1px solid #e2e8f0; color: #334155; line-height: 1.45; }
+    .tabela-tatica tr:nth-child(even) { background-color: #f8fafc; }
+    .tabela-tatica tr:last-child td { border-bottom: none; }
+    .banca-tag { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 7.5pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; margin-right: 4px; }
     @media print {
       body { background-color: #f8fafc !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; padding: 0 !important; }
       .header-banner { background-color: #1a202c !important; color: #ffffff !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
@@ -1627,108 +1876,11 @@ ESTRUTURA CSS BASE PADR\xC3O:
       .alert-box, .alert { background-color: #fffbeb !important; border-left: 5px solid #ea580c !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
       .mnemonic-box, .mnemonic { background-color: #f0fdfa !important; border: 1.5px dashed #0d9488 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
       .exemplo-box, .exemplo { background-color: #f8fafc !important; border-left: 5px solid #0284c7 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      .tabela-tatica { background-color: #ffffff !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      .tabela-tatica th { background-color: #1e293b !important; color: #ffffff !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
       .keyword { color: #dc2626 !important; font-weight: bold !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     }
-</style>`;
-    let suggestedTitle = cleanFileName.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
-    let suggestedSubject = "Direito Constitucional";
-    const lowerName = cleanFileName.toLowerCase();
-    if (lowerName.includes("portugu") || lowerName.includes("gramat") || lowerName.includes("crase") || lowerName.includes("sintaxe") || lowerName.includes("concordanc") || lowerName.includes("regenc") || lowerName.includes("pontuac") || lowerName.includes("redac")) {
-      suggestedSubject = "L\xEDngua Portuguesa";
-    }
-    let lastArticleNumber = null;
-    if (typeof manualLastArticle === "number" && !isNaN(manualLastArticle)) {
-      lastArticleNumber = manualLastArticle;
-    } else if (manualLastArticle && !isNaN(parseInt(String(manualLastArticle), 10))) {
-      lastArticleNumber = parseInt(String(manualLastArticle), 10);
-    }
-    let lastArticleLabel = lastArticleNumber !== null ? `Artigo ${lastArticleNumber}` : "";
-    if (lastArticleNumber === null && previousSummary) {
-      const allMatches = [...previousSummary.matchAll(/\[ÚLTIMO ARTIGO PROCESSADO:\s*(?:Artigo|Art\.\s*|Art\b)?\s*(\d+)[^\]]*\]/gi)];
-      if (allMatches.length > 0) {
-        const lastMatch = allMatches[allMatches.length - 1];
-        lastArticleNumber = parseInt(lastMatch[1], 10);
-        lastArticleLabel = `Artigo ${lastArticleNumber}`;
-      } else {
-        const fallbackMatches = [...previousSummary.matchAll(/\[ÚLTIMO ARTIGO PROCESSADO:\s*(.+?)\]/gi)];
-        if (fallbackMatches.length > 0) {
-          lastArticleLabel = fallbackMatches[fallbackMatches.length - 1][1].trim();
-        } else {
-          const allArtMatches = [...previousSummary.matchAll(/(?:<div class=["']caput["']>|\b)(?:Artigo|Art\.)\s*(\d+)/gi)].map((m) => parseInt(m[1], 10)).filter((n) => !isNaN(n) && n > 0 && n < 3e3);
-          if (allArtMatches.length > 0) {
-            lastArticleNumber = Math.max(...allArtMatches);
-            lastArticleLabel = `Artigo ${lastArticleNumber}`;
-          }
-        }
-      }
-    }
-    const nextArticleInstruction = lastArticleNumber !== null ? `Artigo ${lastArticleNumber + 1}` : lastArticleLabel ? `o artigo subsequente a ${lastArticleLabel}` : "o pr\xF3ximo artigo";
-    const promptText = processNextChapter ? `Voc\xEA \xE9 um professor especialista em Direito e estrutura\xE7\xE3o t\xE1tica de alto n\xEDvel para concursos p\xFAblicos (bancas Cebraspe, FGV e FCC).
-
-Trava de Continuidade (Anti-Loop Rigoroso):
-O bloco anterior encerrou em: [\xDALTIMO ARTIGO PROCESSADO: ${lastArticleLabel || "Artigo anterior"}].
-Inicie a extra\xE7\xE3o ESTRITAMENTE a partir do ${nextArticleInstruction} (Artigo X + 1) presente neste arquivo PDF. \xC9 terminantemente PROIBIDO repetir dispositivos j\xE1 abordados.
-Processe os pr\xF3ximos artigos mantendo a exaustividade absoluta no padr\xE3o visual de refer\xEAncia editorial (WeasyPrint / A4).
-
-REGRA CR\xCDTICA ANTI-LOOP / FIM DO DOCUMENTO (MANDAT\xD3RIO):
-- Se N\xC3O houver mais artigos a serem processados no arquivo PDF ap\xF3s ${lastArticleLabel}, ou se a lei j\xE1 tiver chegado ao fim/disposi\xE7\xF5es finais:
-  N\xC3O repita artigos anteriores nem invente novos artigos. Responda IMEDIATAMENTE e APENAS com a tag:
-  <div class="continuidade" style="text-align: center; font-weight: bold; color: #1e293b; margin-top: 15px; padding: 12px; background-color: #e2e8f0; border: 1px solid #cbd5e1; border-radius: 6px;">[LEGISLA\xC7\xC3O CONCLU\xCDDA NA \xCDNTEGRA]</div>
-
-EXAUSTIVIDADE COGNITIVA E COBERTURA AMPLA (MANDAT\xD3RIO):
-- Processe de forma cont\xEDnua, profunda e exaustiva a maior quantidade de artigos e dispositivos poss\xEDveis da norma, sem limitar artificialmente a poucas linhas ou a 1 p\xE1gina.
-- Mapeie todos os artigos na sequ\xEAncia exata, transformando cada caput, par\xE1grafo, inciso e al\xEDnea em t\xF3picos t\xE1ticos completos.
-- Ao concluir a extra\xE7\xE3o deste lote ou se for o \xFAltimo artigo da lei inteira presente no PDF, finalize com a tag de continuidade:
-<div class="continuidade" style="text-align: right; font-size: 8.5pt; color: #64748b; margin-top: 15px;">[\xDALTIMO ARTIGO PROCESSADO: Artigo X]</div>
-ou se for o t\xE9rmino integral da lei:
-<div class="continuidade" style="text-align: center; font-weight: bold; color: #1e293b; margin-top: 15px; padding: 12px; background-color: #e2e8f0; border: 1px solid #cbd5e1; border-radius: 6px;">[LEGISLA\xC7\xC3O CONCLU\xCDDA NA \xCDNTEGRA]</div>
-
-DIRETRIZES DE FORMATA\xC7\xC3O T\xC1TICA (PADR\xC3O WEASYPRINT / A4):
-1. T\xEDtulos/Cap\xEDtulos: Use <div class="section-title">T\xCDTULO/CAP\xCDTULO X - [NOME]</div>
-2. Agrupamento em Cards: <div class="artigo-box">
-   <div class="artigo-header">Art. X\xBA a Y\xBA - [Nome do T\xF3pico/Cap\xEDtulo]</div>
-   <ul class="artigo-list">
-     <li><strong>[T\xF3pico/Tema] (Art. X\xBA):</strong> Dispositivo legal completo preservando verbos originais, com todas as palavras-chave essenciais em <span class="keyword">PALAVRAS-CHAVE EM VERMELHO VIVO</span>.</li>
-     <li><strong>[Subt\xF3pico/Garantia] (Art. Y\xBA):</strong> Compreende, entre outros:
-       <ol class="numbered-list">
-         <li>Item detalhado com termos restritivos em <span class="keyword">MAI\xDASCULAS/VERMELHO</span>.</li>
-       </ol>
-     </li>
-   </ul>
-   <!-- Alerta de Pegadinha quando houver regras cr\xEDticas ou superprioridade -->
-   <div class="alert-box">
-     <strong>\u{1F6A8} ALERTA - [Tema]:</strong> Detalhe da pegadinha cl\xE1ssica ou superprioridade com <span class="keyword">PALAVRAS DECISIVAS DESTACADAS</span>.
-   </div>
-   <!-- Mnem\xF4nico de memoriza\xE7\xE3o r\xE1pida -->
-   <div class="mnemonic-box">
-     \u{1F9E0} MNEM\xD4NICO: [Sigla/Regra]
-   </div>
-   <!-- EXEMPLO PR\xC1TICO (OBRIGAT\xD3RIO PRESERVAR SE HOUVER NO PDF - ESPECIALMENTE PORTUGU\xCAS) -->
-   <div class="exemplo-box">
-     <strong>\u{1F4A1} EXEMPLO PR\xC1TICO:</strong>
-     <p>\u2022 <span class="exemplo-certo">CERTO:</span> "[Frase de exemplo correta contida no texto original]"</p>
-     <p>\u2022 <span class="exemplo-errado">ERRADO:</span> "[Frase com erro/desvio para contraste se houver]"</p>
-   </div>
- </div>
-3. Destaque Cir\xFArgico (<span class="keyword">): Prazos, idades, exce\xE7\xF5es (EXCETO, SALVO, RESSALVADOS), proibi\xE7\xF5es (\xC9 VEDADA, VEDADO, N\xC3O), qu\xF3runs e percentuais, compet\xEAncias privativas vs exclusivas.
-4. Preserva\xE7\xE3o Total de Exemplos: NUNCA descarte ou sintetize os exemplos pr\xE1ticos; preserve-os integralmente no HTML.
-
-Ao final, inclua OBRIGATORIAMENTE a tag de continuidade:
-<div class="continuidade" style="text-align: right; font-size: 8.5pt; color: #64748b; margin-top: 15px;">[\xDALTIMO ARTIGO PROCESSADO: Artigo X]</div>
-(Caso tenha atingido o \xFAltimo artigo da lei contida no PDF: <div class="continuidade" style="text-align: center; font-weight: bold; color: #1e293b; margin-top: 15px; padding: 12px; background-color: #e2e8f0; border: 1px solid #cbd5e1; border-radius: 6px;">[LEGISLA\xC7\xC3O CONCLU\xCDDA NA \xCDNTEGRA]</div>).
-
-Retorne APENAS o c\xF3digo HTML v\xE1lido, sem markdown (\`\`\`html).` : `Voc\xEA \xE9 um professor especialista em Direito e estrutura\xE7\xE3o t\xE1tica de alto n\xEDvel para concursos p\xFAblicos (bancas Cebraspe, FGV e FCC).
-Sua tarefa \xE9 receber textos de 'lei seca' no PDF e realizar a estrutura\xE7\xE3o t\xE1tica e sem\xE2ntica com EXAUSTIVIDADE ABSOLUTA, transformando os artigos em um material t\xE1tico estruturado em formato HTML rigorosamente no padr\xE3o de refer\xEAncia WeasyPrint / A4.
-
-EXAUSTIVIDADE COGNITIVA E COBERTURA AMPLA (MANDAT\xD3RIO):
-- N\xC3O limite a estrutura\xE7\xE3o a apenas uma p\xE1gina ou a 4 artigos. Processe o documento de forma cont\xEDnua, profunda e exaustiva a partir do Artigo 1\xBA, cobrindo todos os dispositivos e cap\xEDtulos fornecidos com alta densidade e fidelidade.
-- Se a norma inteira couber neste processamento, mapeie at\xE9 o \xFAltimo artigo e finalize com:
-<div class="continuidade" style="text-align: center; font-weight: bold; color: #1e293b; margin-top: 15px; padding: 12px; background-color: #e2e8f0; border: 1px solid #cbd5e1; border-radius: 6px;">[LEGISLA\xC7\xC3O CONCLU\xCDDA NA \xCDNTEGRA]</div>
-- Se atingir o limite de gera\xE7\xE3o deste lote, encerre com a tag indicando o \xFAltimo artigo processado para que o fluxo de continuidade avance nos artigos subsequentes:
-<div class="continuidade" style="text-align: right; font-size: 8.5pt; color: #64748b; margin-top: 15px;">[\xDALTIMO ARTIGO PROCESSADO: Artigo X]</div>
-
-DIRETRIZES ANTI-RESUMO (REGRA ZERO - CR\xCDTICA):
-O seu objetivo N\xC3O \xE9 reduzir o tamanho do texto original. O objetivo \xE9 alterar a formata\xE7\xE3o (de prosa para t\xF3picos t\xE1ticos esquematizados). Voc\xEA \xE9 terminantemente PROIBIDO de pular artigos, incisos, al\xEDneas ou par\xE1grafos para economizar espa\xE7o. Trate cada dispositivo como uma quest\xE3o de prova. Mapeie exaustivamente, na exata ordem do texto fornecido.
+</style>
 
 ESTRUTURA DO HTML DENTRO DE <body>:
 1. No topo (Header Banner Chumbo Escuro #1a202c):
@@ -1740,69 +1892,76 @@ ESTRUTURA DO HTML DENTRO DE <body>:
 2. Para cada T\xEDtulo/Cap\xEDtulo:
 <div class="section-title">[T\xCDTULO/CAP\xCDTULO - NOME COMPLETO]</div>
 
-3. Para cada grupo tem\xE1tico de artigos ou artigo extenso (Card Branco com Borda Suave):
+3. Para cada artigo ou tema:
 <div class="artigo-box">
-  <div class="artigo-header">Art. X\xBA a Y\xBA - [Nome do T\xF3pico Abordado]</div>
+  <div class="artigo-header">Art. X\xBA - [Nome do T\xF3pico Abordado]</div>
   <ul class="artigo-list">
-    <li><strong>[T\xF3pico/Quem se Aplica] (Art. X\xBA):</strong> [Texto do caput ou dispositivo com verbos preservados e <span class="keyword">PALAVRAS-CHAVE EM VERMELHO VIVO</span>].</li>
-    <li><strong>[Regra/Garantia] (Art. Y\xBA):</strong> Compreende, entre outros:
+    <li><strong>[Conceito / Caput]:</strong> [Texto normativo com verbos preservados e <span class="keyword">PALAVRAS-CHAVE EM VERMELHO VIVO</span>].</li>
+    <li><strong>[Desdobramentos/Incisos]:</strong> Compreende, entre outros:
       <ol class="numbered-list">
-        <li>[Item 1 com <span class="keyword">TERMOS CR\xCDTICOS</span>]</li>
-        <li>[Item 2 com exce\xE7\xF5es em <span class="keyword">EXCETO / SALVO</span>]</li>
+        <li>[Inciso I com <span class="keyword">TERMOS CR\xCDTICOS</span>]</li>
+        <li>[Inciso II com exce\xE7\xF5es em <span class="keyword">EXCETO / SALVO</span>]</li>
       </ol>
     </li>
-    <!-- T\xF3pico com apontador quando aplic\xE1vel -->
-    <li class="callout-point">\u{1F449} <strong>[Ponto de Destaque]:</strong> [Regra espec\xEDfica com <span class="keyword">DESTAQUE</span>].</li>
   </ul>
-  
-  <!-- Box de Alerta para Pegadinha ou Superprioridade -->
+  <!-- Alerta de Banca quando houver regra com hist\xF3rico de pegadinha -->
   <div class="alert-box">
-    <strong>\u{1F6A8} ALERTA - [T\xEDtulo do Alerta] (\xA7X\xBA):</strong> [Explica\xE7\xE3o clara da pegadinha com <span class="keyword">TERMOS RESTRITIVOS DESTACADOS</span>].
+    <strong>\u{1F6A8} ALERTA DE BANCA (\xA7X\xBA):</strong> [Explica\xE7\xE3o clara da pegadinha com <span class="keyword">TERMOS RESTRITIVOS DESTACADOS</span>].
   </div>
-
-  <!-- Mnem\xF4nico de memoriza\xE7\xE3o r\xE1pida -->
-  <div class="mnemonic-box">
-    \u{1F9E0} MNEM\xD4NICO: [T\xEDtulo / F\xF3rmula]
-  </div>
-
-  <!-- Box de Exemplos Pr\xE1ticos (MANDAT\xD3RIO: Se houver frases de exemplo no PDF, preserve todas) -->
+  <!-- Tabela comparativa quando houver categorias ou prazos paralelos -->
+  <table class="tabela-tatica">
+    <thead><tr><th>Instituto</th><th>Prazo / Requisito</th><th>Exce\xE7\xE3o</th></tr></thead>
+    <tbody><tr><td><strong>Regra A</strong></td><td>15 dias</td><td>Salvo motivo justificado</td></tr></tbody>
+  </table>
+  <!-- Mnem\xF4nico de memoriza\xE7\xE3o -->
+  <div class="mnemonic-box">\u{1F9E0} MNEM\xD4NICO: [Sigla / Macete]</div>
+  <!-- Exemplo Pr\xE1tico se houver -->
   <div class="exemplo-box">
     <strong>\u{1F4A1} EXEMPLO PR\xC1TICO:</strong>
-    <p>\u2022 <span class="exemplo-certo">CERTO:</span> "[Frase modelo correta contida no material]"</p>
-    <p>\u2022 <span class="exemplo-errado">ERRADO:</span> "[Frase incorreta ou desvio gramatical para contraste]"</p>
+    <p>\u2022 <span class="exemplo-certo">CERTO:</span> "[Frase modelo correta]"</p>
+    <p>\u2022 <span class="exemplo-errado">ERRADO:</span> "[Frase com pegadinha cl\xE1ssica]"</p>
   </div>
 </div>
 
-4. Preserva\xE7\xE3o de Exemplos (L\xEDngua Portuguesa e Casos Pr\xE1ticos): Se o texto original contiver frases de exemplo, ora\xE7\xF5es ilustrativas ou aplica\xE7\xF5es pr\xE1ticas da regra, NUNCA as elimine ou resuma. Mantenha os exemplos rigorosamente no esquema t\xE1tico dentro de .exemplo-box.
-
-5. No final do <body>:
-<div class="continuidade" style="text-align: right; font-size: 8.5pt; color: #64748b; margin-top: 15px;">[\xDALTIMO ARTIGO PROCESSADO: Artigo X]</div>
-(Se conclu\xEDdo integralmente: <div class="continuidade" style="text-align: center; font-weight: bold; color: #1e293b; margin-top: 15px; padding: 12px; background-color: #e2e8f0; border: 1px solid #cbd5e1; border-radius: 6px;">[LEGISLA\xC7\xC3O CONCLU\xCDDA NA \xCDNTEGRA]</div>).
-
 Retorne APENAS o c\xF3digo HTML v\xE1lido e completo (com <!DOCTYPE html>, <html>, <head>, <style> e <body>). N\xE3o adicione markdown (como \`\`\`html).`;
+    const contentParts = [];
+    if (activeTextChunk && activeTextChunk.length > 50) {
+      contentParts.push({
+        text: `TEXTO ORIGINAL DO DOCUMENTO / PDF PARA PROCESSAMENTO EXAUSTIVO:
+${activeTextChunk}
+
+---
+${promptText}`
+      });
+    } else {
+      contentParts.push({
+        inlineData: {
+          mimeType: "application/pdf",
+          data: base64Data
+        }
+      });
+      contentParts.push({
+        text: promptText
+      });
+    }
     const response = await generateContentWithRetryAndFallback(
       ai,
       {
         contents: [
           {
-            inlineData: {
-              mimeType: "application/pdf",
-              data: base64Data
-            }
-          },
-          {
-            text: promptText
+            role: "user",
+            parts: contentParts
           }
         ],
         config: {
           systemInstruction,
           temperature: 0.15,
-          maxOutputTokens: 8192,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
+          maxOutputTokens: 16384,
+          thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM }
         }
       },
-      ["gemini-3.1-flash-lite", "gemini-3.8-flash"],
-      55e3,
+      ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"],
+      6e4,
       12e4
     );
     const generatedText = response.text ? response.text.trim() : "";
@@ -1815,6 +1974,7 @@ Retorne APENAS o c\xF3digo HTML v\xE1lido e completo (com <!DOCTYPE html>, <html
     } else if (cleanGenerated.startsWith("```")) {
       cleanGenerated = cleanGenerated.replace(/^```\s*/i, "").replace(/\s*```$/i, "").trim();
     }
+    cleanGenerated = cleanGenerated.replace(/\[cite:\s*[\d,\s]+\]/gi, "").replace(/---+\s*\[?(?:P[ÁA]GINA|PAGE)\s+\d+(?:\s+(?:de|of)\s+\d+)?\]?\s*---+/gi, "");
     const h1Match = cleanGenerated.match(/<h1[^>]*>([^<]+)<\/h1>/i);
     const titleTagMatch = cleanGenerated.match(/<title>([^<]+)<\/title>/i);
     if (h1Match && h1Match[1].trim()) {
@@ -1834,9 +1994,9 @@ Retorne APENAS o c\xF3digo HTML v\xE1lido e completo (com <!DOCTYPE html>, <html
       suggestedSubject = "L\xEDngua Portuguesa";
     }
     let summaryBody = cleanGenerated;
-    const explicitFinishedTag = /LEGISLAÇÃO CONCLUÍDA NA ÍNTEGRA|\[CONCLUÍDO NA ÍNTEGRA\]|\[FIM DA LEGISLAÇÃO\]|\[FIM DA NORMA\]|\[FIM DO DOCUMENTO\]/i.test(
+    const explicitFinishedTag = /LEGISLAÇÃO CONCLUÍDA NA ÍNTEGRA|DOCUMENTO CONCLUÍDO NA ÍNTEGRA|\[CONCLUÍDO NA ÍNTEGRA\]|\[FIM DA LEGISLAÇÃO\]|\[FIM DA NORMA\]|\[FIM DO DOCUMENTO\]/i.test(
       summaryBody
-    ) || /\[ÚLTIMO ARTIGO PROCESSADO:\s*(?:FIM|CONCLU[ÍI]DO|FINAL|TÉRMINO|ENCERRADO)[^\]]*\]/i.test(summaryBody);
+    ) || /\[ÚLTIMO (?:ARTIGO|TÓPICO) PROCESSADO:\s*(?:FIM|CONCLU[ÍI]DO|FINAL|TÉRMINO|ENCERRADO)[^\]]*\]/i.test(summaryBody);
     let newlyFoundArticle = null;
     const tagMatch = summaryBody.match(/\[ÚLTIMO ARTIGO PROCESSADO:\s*(?:Artigo|Art\.\s*|Art\b)?\s*(\d+)[^\]]*\]/i);
     if (tagMatch) {
@@ -1847,25 +2007,58 @@ Retorne APENAS o c\xF3digo HTML v\xE1lido e completo (com <!DOCTYPE html>, <html
         newlyFoundArticle = Math.max(...artMatches);
       }
     }
-    let isLegislationFinished = false;
-    if (explicitFinishedTag) {
-      isLegislationFinished = true;
-    } else if (processNextChapter && lastArticleNumber !== null) {
-      if (newlyFoundArticle !== null && newlyFoundArticle > lastArticleNumber) {
-        isLegislationFinished = false;
-      } else {
-        console.log(`[Anti-Loop Server] Nenhum artigo posterior ao Artigo ${lastArticleNumber} encontrado no PDF. Finalizando legisla\xE7\xE3o.`);
-        isLegislationFinished = true;
+    let newlyFoundTopic = null;
+    const topicTagMatch = summaryBody.match(/\[ÚLTIMO TÓPICO PROCESSADO:\s*(.+?)\]/i);
+    if (topicTagMatch) {
+      newlyFoundTopic = topicTagMatch[1].trim();
+    } else {
+      const topicMatches = [...summaryBody.matchAll(/<div class=["'](?:section-title|artigo-header)["'][^>]*>([^<]+)<\/div>/gi)];
+      if (topicMatches.length > 0) {
+        newlyFoundTopic = topicMatches[topicMatches.length - 1][1].trim();
       }
     }
-    if (isLegislationFinished) {
-      if (!summaryBody.includes("LEGISLA\xC7\xC3O CONCLU\xCDDA NA \xCDNTEGRA")) {
-        summaryBody += `
-<div class="continuidade" style="text-align: center; font-weight: bold; color: #2064af; margin-top: 15px; padding: 12px; background-color: #eaf1f8; border: 1px solid #bfdbfe; border-radius: 6px;">[LEGISLA\xC7\xC3O CONCLU\xCDDA NA \xCDNTEGRA]</div>`;
+    let isDocumentFinished = false;
+    if (hasMoreDocContent) {
+      isDocumentFinished = false;
+      summaryBody = summaryBody.replace(/<div[^>]*class=["']?continuidade["']?[^>]*>[\s\S]*?(?:CONCLUÍDO|CONCLUÍDA) NA ÍNTEGRA[\s\S]*?<\/div>/gi, "");
+      if (!summaryBody.includes("[\xDALTIMO ARTIGO PROCESSADO") && !summaryBody.includes("[\xDALTIMO T\xD3PICO PROCESSADO")) {
+        if (newlyFoundArticle !== null) {
+          summaryBody += `
+<div class="continuidade" style="text-align: right; font-size: 8.5pt; color: #64748b; margin-top: 15px;">[\xDALTIMO ARTIGO PROCESSADO: Artigo ${newlyFoundArticle}]</div>`;
+        } else if (newlyFoundTopic) {
+          summaryBody += `
+<div class="continuidade" style="text-align: right; font-size: 8.5pt; color: #64748b; margin-top: 15px;">[\xDALTIMO T\xD3PICO PROCESSADO: ${newlyFoundTopic}]</div>`;
+        }
       }
-    } else if (!summaryBody.includes("[\xDALTIMO ARTIGO PROCESSADO") && newlyFoundArticle !== null) {
-      summaryBody += `
-<div class="continuidade" style="text-align: right; font-size: 8pt; color: #718096; margin-top: 15px;">[\xDALTIMO ARTIGO PROCESSADO: Artigo ${newlyFoundArticle}]</div>`;
+    } else if (explicitFinishedTag) {
+      isDocumentFinished = true;
+    } else if (processNextChapter) {
+      const hasArticleAdvance = newlyFoundArticle !== null && lastArticleNumber !== null && newlyFoundArticle > lastArticleNumber;
+      const hasTopicAdvance = newlyFoundTopic && lastTopicLabel && newlyFoundTopic.toLowerCase() !== lastTopicLabel.toLowerCase();
+      const rawSubstance = summaryBody.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+      const hasSubstantialText = rawSubstance.length > 350;
+      if (hasArticleAdvance || hasTopicAdvance || hasSubstantialText && !explicitFinishedTag) {
+        isDocumentFinished = false;
+      } else {
+        console.log(`[Anti-Loop Server] Nenhum avan\xE7o posterior detectado no lote. Finalizando documento.`);
+        isDocumentFinished = true;
+      }
+    } else {
+      isDocumentFinished = true;
+    }
+    if (isDocumentFinished) {
+      if (!summaryBody.includes("CONCLU\xCDDO NA \xCDNTEGRA") && !summaryBody.includes("CONCLU\xCDDA NA \xCDNTEGRA")) {
+        summaryBody += `
+<div class="continuidade" style="text-align: center; font-weight: bold; color: #1e293b; margin-top: 15px; padding: 12px; background-color: #e2e8f0; border: 1px solid #cbd5e1; border-radius: 6px;">[DOCUMENTO CONCLU\xCDDO NA \xCDNTEGRA]</div>`;
+      }
+    } else if (!summaryBody.includes("[\xDALTIMO ARTIGO PROCESSADO") && !summaryBody.includes("[\xDALTIMO T\xD3PICO PROCESSADO")) {
+      if (newlyFoundArticle !== null) {
+        summaryBody += `
+<div class="continuidade" style="text-align: right; font-size: 8.5pt; color: #64748b; margin-top: 15px;">[\xDALTIMO ARTIGO PROCESSADO: Artigo ${newlyFoundArticle}]</div>`;
+      } else if (newlyFoundTopic) {
+        summaryBody += `
+<div class="continuidade" style="text-align: right; font-size: 8.5pt; color: #64748b; margin-top: 15px;">[\xDALTIMO T\xD3PICO PROCESSADO: ${newlyFoundTopic}]</div>`;
+      }
     }
     if (processNextChapter && previousSummary) {
       if (previousSummary.includes("<body") || previousSummary.includes("<html")) {
@@ -1875,7 +2068,7 @@ Retorne APENAS o c\xF3digo HTML v\xE1lido e completo (com <!DOCTYPE html>, <html
           newContent = newBodyMatch[1];
         }
         newContent = newContent.replace(/<div class=["']header-banner["'][\s\S]*?<\/div>/gi, "");
-        let mergedHtml = previousSummary.replace(/<div[^>]*class=["']?continuidade["']?[^>]*>[\s\S]*?<\/div>/gi, "").replace(/<div[^>]*>\[ÚLTIMO ARTIGO PROCESSADO:[\s\S]*?<\/div>/gi, "").replace(/<!--\s*\[ÚLTIMO ARTIGO PROCESSADO:[\s\S]*?-->/gi, "");
+        let mergedHtml = previousSummary.replace(/<div[^>]*class=["']?continuidade["']?[^>]*>[\s\S]*?<\/div>/gi, "").replace(/<div[^>]*>\[ÚLTIMO (?:ARTIGO|TÓPICO) PROCESSADO:[\s\S]*?<\/div>/gi, "").replace(/<!--\s*\[ÚLTIMO (?:ARTIGO|TÓPICO) PROCESSADO:[\s\S]*?-->/gi, "");
         if (mergedHtml.includes("</body>")) {
           summaryBody = mergedHtml.replace("</body>", `
 ${newContent.trim()}
@@ -1935,10 +2128,10 @@ ${summaryBody}
     if (finalAllArtMatches.length > 0) {
       finalHighestArticle = Math.max(...finalAllArtMatches);
     }
-    const finalIsFinished = isLegislationFinished;
-    if (finalIsFinished && !summaryBody.includes("LEGISLA\xC7\xC3O CONCLU\xCDDA NA \xCDNTEGRA")) {
+    const finalIsFinished = isDocumentFinished;
+    if (finalIsFinished && !summaryBody.includes("CONCLU\xCDDO NA \xCDNTEGRA") && !summaryBody.includes("CONCLU\xCDDA NA \xCDNTEGRA")) {
       summaryBody += `
-<div class="continuidade" style="text-align: center; font-weight: bold; color: #2064af; margin-top: 15px; padding: 12px; background-color: #eaf1f8; border: 1px solid #bfdbfe; border-radius: 6px;">[LEGISLA\xC7\xC3O CONCLU\xCDDA NA \xCDNTEGRA]</div>`;
+<div class="continuidade" style="text-align: center; font-weight: bold; color: #1e293b; margin-top: 15px; padding: 12px; background-color: #e2e8f0; border: 1px solid #cbd5e1; border-radius: 6px;">[DOCUMENTO CONCLU\xCDDO NA \xCDNTEGRA]</div>`;
     }
     res.json({
       success: true,
@@ -1948,7 +2141,13 @@ ${summaryBody}
       suggestedSubject,
       fileName: cleanFileName,
       lastArticle: finalHighestArticle,
-      isFinished: finalIsFinished
+      lastTopic: newlyFoundTopic || lastTopicLabel || void 0,
+      isFinished: finalIsFinished,
+      hasMoreContent: hasMoreDocContent,
+      totalDocLength: fullDocText ? fullDocText.length : void 0,
+      processedDocLength: currentChunkEndOffset || void 0,
+      progressPercent: fullDocText && fullDocText.length > 0 ? Math.min(100, Math.round(currentChunkEndOffset / fullDocText.length * 100)) : finalIsFinished ? 100 : void 0,
+      totalPages: totalDocPages || void 0
     });
   } catch (err) {
     const friendlyError = formatAiErrorMessage(err);
@@ -2153,9 +2352,13 @@ ${textToProcess}`;
         config: {
           systemInstruction,
           temperature: 0.15,
-          maxOutputTokens: 8192
+          maxOutputTokens: 16384,
+          thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM }
         }
-      }
+      },
+      ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"],
+      6e4,
+      12e4
     );
     let cleanHtml = response.text ? response.text.trim() : "";
     if (cleanHtml.startsWith("```html")) {
@@ -2254,6 +2457,150 @@ ${firstUpper}`;
 
 ${firstCharUpper}`;
 };
+var resolveExactSubjectTaxonomy = (rawSubject, sourceLawRef, questionText, summaryTitle) => {
+  const combined = `${rawSubject || ""} ${sourceLawRef || ""} ${questionText || ""} ${summaryTitle || ""}`.toLowerCase();
+  const isExplicitEca = /\b(?:8\.?069|8069\/90|8069\/1990|estatuto da crian[çc]a e do adolescente)\b/i.test(combined) || /\b(?:ato infracional|medida socioeducativa|medidas socioeducativas|conselho tutelar|fundo municipal dos direitos da crian[çc]a|acolhimento institucional|adotando\b.*?\beca\b)\b/i.test(combined);
+  const isPenalCodeOrCrimes = /\b(?:c[oó]digo penal|decreto-lei\s*(?:n[ºo]?\s*)?2\.?848|dl\s*2848|cp\b|artigo\s*(?:121|122|123|129|147|155|157|158|168|171|213|217-?a|218|288|312|313|316|317|319|327|333)\b|art\.\s*(?:121|122|123|129|147|155|157|158|168|171|213|217-?a|218|288|312|313|316|317|319|327|333)\b)/i.test(combined) || /\b(?:leg[ií]tima defesa|estado de necessidade|estrito cumprimento|culpabilidade|imputabilidade|crime tentado|crime consumado|tipicidade|dolo|culpa|coautoria|concurso de crimes|concurso de pessoas|prescri[çc][ãa]o penal|extin[çc][ãa]o da punibilidade|livramento condicional|penas privativas de liberdade|reclus[ãa]o|deten[çc][ãa]o|homic[ií]dio|furto|roubo|estelionato|estupro|peculato|concuss[ãa]o|corrup[çc][ãa]o passiva|prevarica[çc][ãa]o)\b/i.test(combined);
+  if (isPenalCodeOrCrimes && !isExplicitEca) {
+    return "Direito Penal";
+  }
+  if (rawSubject && /\b(?:crian[çc]a|adolescente|inf[âa]ncia)\b/i.test(rawSubject)) {
+    if (!isExplicitEca) {
+      if (isPenalCodeOrCrimes || /\b(?:crime|delito|pena|pris[ãa]o|tipifica)\b/i.test(combined)) {
+        return "Direito Penal";
+      }
+      if (summaryTitle && !summaryTitle.toLowerCase().includes("8.069") && !summaryTitle.toLowerCase().includes("eca")) {
+        const cleanTitleSubj = summaryTitle.split(/[-–:]/)[0].trim();
+        if (cleanTitleSubj && cleanTitleSubj.length > 3 && !/\b(?:crian|adolesc)\b/i.test(cleanTitleSubj)) {
+          return cleanTitleSubj;
+        }
+      }
+      return "Direito Penal";
+    }
+    return "Direito da Crian\xE7a e do Adolescente";
+  }
+  if (/\b(?:constitui[çc][ãa]o\s+federal|cf\/88|cf\s*88|carta\s+magna|art\.\s*5[ºo]\s+da\s+cf|artigo\s*5[ºo]|direitos\s+fundamentais|rem[eé]dios\s+constitucionais|a[çc][ãa]o\s+direta\s+de\s+inconstitucionalidade|adi|adc|adpf)\b/i.test(combined)) {
+    return "Direito Constitucional";
+  }
+  if (/\b(?:c[oó]digo de processo penal|cpp\b|decreto-lei\s*(?:n[ºo]?\s*)?3\.?689|inqu[eé]rito policial|pris[ãa]o em flagrante|pris[ãa]o preventiva|pris[ãa]o tempor[aá]ria|tribunal do j[uú]ri|a[çc][ãa]o penal|habeas corpus)\b/i.test(combined)) {
+    return "Direito Processual Penal";
+  }
+  if (/\b(?:lei\s*8\.?112|lei\s*14\.?133|lei\s*8\.?666|lei\s*8\.?429|lei\s*9\.?784|servidor p[uú]blico federal|improbidade administrativa|licita[çc][ãa]o|atos administrativos|poderes administrativos|responsabilidade civil do estado)\b/i.test(combined)) {
+    return "Direito Administrativo";
+  }
+  if (/\b(?:lei\s*13\.?022|13022|guarda municipal|guardas municipais)\b/i.test(combined)) {
+    return rawSubject && !rawSubject.toLowerCase().includes("crian") ? rawSubject : "Legisla\xE7\xE3o Espec\xEDfica";
+  }
+  if (/\b(?:c[oó]digo civil|lei\s*10\.?406|personalidade jur[ií]dica|neg[oó]cio jur[ií]dico|prescri[çc][ãa]o e decad[êe]ncia civil|posse e propriedade|usucapi[ãa]o)\b/i.test(combined)) {
+    return "Direito Civil";
+  }
+  if (/\b(?:c[oó]digo de processo civil|cpc\b|lei\s*13\.?105|peti[çc][ãa]o inicial|recurso especial|agravo de instrumento|tutela de urg[êe]ncia)\b/i.test(combined)) {
+    return "Direito Processual Civil";
+  }
+  if (/\b(?:c[oó]digo tribut[aá]rio|ctn\b|lei\s*5\.?172|cr[eé]dito tribut[aá]rio|lan[çc]amento tribut[aá]rio|impostos|taxas|contribui[çc][ãa]o de melhoria)\b/i.test(combined)) {
+    return "Direito Tribut\xE1rio";
+  }
+  if (/\b(?:lei\s*8\.?213|lei\s*8\.?212|benef[ií]cios da previd[êe]ncia|regime geral de previd[êe]ncia|inss)\b/i.test(combined)) {
+    return "Direito Previdenci\xE1rio";
+  }
+  if (/\b(?:clt\b|consolida[çc][ãa]o das leis do trabalho|contrato de trabalho|fgts|aviso pr[eé]vio|jornada de trabalho)\b/i.test(combined)) {
+    return "Direito do Trabalho";
+  }
+  if (rawSubject && rawSubject.trim().length > 0) {
+    const s = rawSubject.trim();
+    if (s.toLowerCase().includes("crian") || s.toLowerCase().includes("adolescente")) {
+      return isExplicitEca ? "Direito da Crian\xE7a e do Adolescente" : "Direito Penal";
+    }
+    return s;
+  }
+  return "Direito Constitucional";
+};
+var getSubjectSpecificDistractors = (subject, displayTopic) => {
+  const s = (subject || "").toLowerCase();
+  if (s.includes("penal") || s.includes("crime") || s.includes("delito")) {
+    return [
+      `A conduta t\xEDpica prescinde de dolo espec\xEDfico para sua consuma\xE7\xE3o, admitindo puni\xE7\xE3o na modalidade culposa independentemente de expressa previs\xE3o legal.`,
+      `A repara\xE7\xE3o do dano ou a restitui\xE7\xE3o volunt\xE1ria da coisa antes do julgamento extingue de plano a punibilidade em qualquer hip\xF3tese de delito funcional.`,
+      `Trata-se de infra\xE7\xE3o formal e unissubsistente que n\xE3o admite a tentativa sob nenhuma circunst\xE2ncia f\xE1tica.`,
+      `A excludente de ilicitude incide de pleno direito mesmo quando o agente atua em manifesto excesso culposo ou doloso.`,
+      `Aplica-se causa especial de aumento de pena de forma autom\xE1tica caso a infra\xE7\xE3o seja praticada fora do hor\xE1rio de expediente regular.`
+    ];
+  }
+  if (s.includes("constitucional")) {
+    return [
+      `A mat\xE9ria \xE9 de compet\xEAncia privativa da Uni\xE3o, sendo vedada delega\xE7\xE3o aos Estados ou ao Distrito Federal mesmo mediante lei complementar.`,
+      `A norma constitucional correspondente possui efic\xE1cia limitada, dependendo de expressa e pr\xE9via regulamenta\xE7\xE3o ordin\xE1ria para produzir efeitos pr\xE1ticos.`,
+      `A garantia fundamental correspondente admite suspens\xE3o autom\xE1tica por ato discricion\xE1rio do Poder Executivo, prescindindo de decreta\xE7\xE3o de estado de defesa.`,
+      `A proposi\xE7\xE3o submete-se a rito de qu\xF3rum qualificado de tr\xEAs quintos em dois turnos de vota\xE7\xE3o em cada Casa do Congresso Nacional.`,
+      `O controle concentrado de constitucionalidade do ato normativo cabe originariamente aos Tribunais de Contas dos entes federados.`
+    ];
+  }
+  if (s.includes("portugu") || s.includes("gram") || s.includes("reda\xE7\xE3o")) {
+    return [
+      `O emprego do acento grave indicativo de crase \xE9 de observ\xE2ncia obrigat\xF3ria em virtude da reg\xEAncia do verbo e do substantivo determinado subsequente.`,
+      `A altera\xE7\xE3o do tempo verbal para o pret\xE9rito imperfeito do subjuntivo preserva a corre\xE7\xE3o gramatical e a coer\xEAncia sem\xE2ntica original do per\xEDodo.`,
+      `O voc\xE1bulo exerce a fun\xE7\xE3o sint\xE1tica de complemento nominal, ligando-se por subordina\xE7\xE3o ao n\xFAcleo do predicado.`,
+      `A substitui\xE7\xE3o do conector mant\xE9m o valor sem\xE2ntico causal e as rela\xE7\xF5es de subordina\xE7\xE3o sint\xE1tica estabelecidas no texto.`,
+      `A concord\xE2ncia verbal estabelece-se no plural por for\xE7a da presen\xE7a de sujeito composto posposto ao verbo.`
+    ];
+  }
+  if (s.includes("processual") || s.includes("processo")) {
+    return [
+      `A decreta\xE7\xE3o da medida cautelar submete-se \xE0 cl\xE1usula de reserva de jurisdi\xE7\xE3o, sendo nula a decis\xE3o destitu\xEDda de fundamenta\xE7\xE3o concreta.`,
+      `O prazo para interposi\xE7\xE3o do recurso cab\xEDvel conta-se em dias corridos, n\xE3o se interrompendo pela oposi\xE7\xE3o de embargos de declara\xE7\xE3o.`,
+      `A compet\xEAncia ratione loci possui natureza absoluta, admitindo prorroga\xE7\xE3o t\xE1cita mediante conveni\xEAncia das partes.`,
+      `A inobserv\xE2ncia da formalidade procedimental acarreta nulidade relativa que se convalida caso n\xE3o arguida na primeira oportunidade.`,
+      `O contradit\xF3rio pr\xE9vio \xE9 indispens\xE1vel na fase inquisitorial sob pena de contamina\xE7\xE3o integral do caderno probat\xF3rio.`
+    ];
+  }
+  return [
+    `A compet\xEAncia administrativa para o ato \xE9 privativa e indeleg\xE1vel, acarretando nulidade de pleno direito caso exercida por autoridade subordinada.`,
+    `A efic\xE1cia da medida fica sujeita a ratifica\xE7\xE3o expressa e vinculante pelo \xF3rg\xE3o colegiado superior da institui\xE7\xE3o.`,
+    `O prazo prescricional para apura\xE7\xE3o da conduta interrompe-se com a simples not\xEDcia an\xF4nima perante a ouvidoria do \xF3rg\xE3o.`,
+    `A penalidade disciplinar correspondente tem aplica\xE7\xE3o sum\xE1ria, dispensando-se a instaura\xE7\xE3o de processo administrativo com contradit\xF3rio pr\xE9vio.`,
+    `A revoga\xE7\xE3o do ato por motivo de conveni\xEAncia e oportunidade pode ser determinada pelo Poder Judici\xE1rio em sede de controle de legalidade.`
+  ];
+};
+var sanitizeStructuredOptionText = (rawText, fallback) => {
+  if (!rawText || typeof rawText !== "string") return fallback;
+  let text = rawText.trim();
+  if (text.length < 8 || /^alternativa\s+[a-e][\.\:\s]*$/i.test(text)) {
+    return fallback;
+  }
+  text = text.replace(/[\s,;:\-]+(?:de|que|e|ou|com|em|para|por|da|do|dos|das|no|na|nos|nas)\s*$/i, "");
+  text = text.replace(/[,\-;:–—]\s*$/, "");
+  text = text.replace(/\.{2,}\s*$/, "");
+  text = text.trim();
+  if (!/[.!?]$/.test(text)) {
+    text += ".";
+  }
+  if (text.length > 0) {
+    text = text.charAt(0).toUpperCase() + text.slice(1);
+  }
+  return text;
+};
+var sanitizeStructuredQuestionText = (rawText, defaultTopic) => {
+  if (!rawText || typeof rawText !== "string") return `Acerca de ${defaultTopic}, assinale a afirmativa correta:`;
+  let text = rawText.trim();
+  text = text.replace(/^(?:considerando|com\s+base\s+n[ao]s?|conforme|segundo|de\s+acordo\s+com)\s+(?:os?\s+mnem[oô]nicos?|os?\s+mapas?\s+t[aá]ticos?|a\s+esquematiza[çc][ãa]o\s+t[aá]tica|o\s+resumo\s+t[aá]tico|o\s+alerta\s+do\s+material|as\s+notas\s+de\s+estudo)[^,:\.\n]*[,:\.\-–]\s*/gi, "");
+  text = text.replace(/^(?:os?\s+mnem[oô]nicos?|as?\s+siglas?|os?\s+mapas?\s+t[aá]ticos?)[^,:\.\n]*[,:\.\-–]\s*/gi, "");
+  text = text.replace(/\b(?:os?\s+mnem[oô]nicos?)\s*(?:e\s+a\s+estrutura)?\b/gi, "a estrutura jur\xEDdica");
+  text = text.replace(/\bmapas?\s+t[aá]ticos?\b/gi, "disciplina legal");
+  text = text.replace(/\besquematiza[çc][ãa]o\s+t[aá]tica\b/gi, "previs\xE3o normativa");
+  text = text.replace(/\s{2,}/g, " ").trim();
+  if (!text || text.length < 15) {
+    text = `Acerca das disposi\xE7\xF5es e preceitos normativos de ${defaultTopic}, assinale a afirmativa correta:`;
+  } else {
+    text = text.charAt(0).toUpperCase() + text.slice(1);
+  }
+  text = text.replace(/[\s,;:\-]+(?:de|que|e|ou|com|em|para|por)\s*$/i, "");
+  text = text.replace(/\.{2,}\s*$/, "");
+  text = text.trim();
+  if (!/[.!?:]$/.test(text)) {
+    text += ".";
+  }
+  return text;
+};
 app.post("/api/generate-questions", async (req, res) => {
   const db = readDb();
   let questionCount = 5;
@@ -2278,7 +2625,8 @@ app.post("/api/generate-questions", async (req, res) => {
     questionStyle = "mixed",
     // 'case_study' | 'direct' | 'mixed'
     existingQuestions: incomingExistingQuestions = [],
-    searchOnline = false
+    searchOnline = false,
+    customSourceUrl = ""
   } = req.body || {};
   questionCount = Math.max(1, Number(rawQuestionCount) || 5);
   primarySubject = directSubject || "Direito Constitucional";
@@ -2291,6 +2639,7 @@ app.post("/api/generate-questions", async (req, res) => {
     if (cleaned.includes("<")) {
       cleaned = cleaned.replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<head[\s\S]*?<\/head>/gi, " ").replace(/<div class=["']header-banner["'][\s\S]*?<\/div>/gi, " ").replace(/<\/(p|div|h1|h2|h3|h4|h5|h6|li|tr|section|article)>/gi, "\n\n").replace(/<br\s*[\/]?>/gi, "\n").replace(/<hr\s*[\/]?>/gi, "\n---\n").replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, '"').replace(/&#39;/gi, "'");
     }
+    cleaned = cleaned.replace(/\[ÚLTIMO (?:ARTIGO|TÓPICO) PROCESSADO:[^\]]*\]/gi, "").replace(/\[(?:LEGISLAÇÃO|DOCUMENTO) CONCLUÍDO NA ÍNTEGRA\]/gi, "").replace(/\[TEXTO DE ESTUDO[^\]]*\]/gi, "").replace(/\[SUMÁRIO ESTRATÉGICO[^\]]*\]/gi, "").replace(/(?:^|\n)\s*(?:🧠|💡|⚡|📌|🎯)?\s*(?:MNEM[OÔ]NICO|DICA\s+DE\s+MEMORIZA[ÇC][ÃA]O|BIZU\s+T[AÁ]TICO)[^:\n]*:?[^\n]*/gi, "").replace(/\bcite:\s*\d+\b/gi, "").replace(/\[\s*cite:\s*\d+\s*\]/gi, "").replace(/\(\s*cite:\s*\d+\s*\)/gi, "").replace(/\b([BCDFGHJKLMNPQRSTVWXYZ])\s+([a-záéíóúâêôãõç]{2,})\b/g, "$1$2").replace(/\bA\s+tividade\b/gi, "Atividade").replace(/\bA\s+utor\b/gi, "Autor").replace(/\bA\s+umento\b/gi, "Aumento").replace(/\bI\s+mputab/gi, "Imputab").replace(/\bT\s+eoria\b/gi, "Teoria").replace(/\bC\s+rime\b/gi, "Crime").replace(/\bP\s+ena\b/gi, "Pena").replace(/\bT\s+empo\b/gi, "Tempo").replace(/\bL\s+ugar\b/gi, "Lugar");
     return cleaned.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
   };
   const runWithConcurrency = async (items, limit, fn) => {
@@ -2354,53 +2703,54 @@ app.post("/api/generate-questions", async (req, res) => {
     let units = extractStructuralUnits(rawText, Math.max(effectiveCount * 2, (effectiveCount + existingCount) * 2));
     if (units.length < effectiveCount) {
       const cleaned = cleanContent(rawText);
-      const paragraphs = cleaned.split(/(?:\n{1,}|\r\n{1,}|(?<=[.!?])\s+(?=[A-Z0-9#\-\*]))/).map((p) => p.trim()).filter((p) => p.length > 20);
+      const paragraphs = cleaned.split(/\n{2,}/).map((p) => p.trim()).filter((p) => p.length > 40);
       if (paragraphs.length >= effectiveCount) {
         units = paragraphs;
-      } else {
-        const chunkSize = Math.max(80, Math.floor(cleaned.length / effectiveCount));
-        const chunked = [];
-        for (let i = 0; i < effectiveCount; i++) {
-          const start = i * chunkSize;
-          const end = i === effectiveCount - 1 ? cleaned.length : (i + 1) * chunkSize;
-          chunked.push(cleaned.slice(start, end).trim());
-        }
-        units = chunked;
+      } else if (units.length === 0 && paragraphs.length > 0) {
+        units = paragraphs;
+      } else if (units.length === 0) {
+        const sentences = cleaned.split(/(?<=[.!?;\n])\s+/).map((s) => s.trim()).filter((s) => s.length > 30);
+        units = sentences.length > 0 ? sentences : [cleaned];
       }
+    }
+    if (units.length < effectiveCount && units.length > 0) {
+      const expanded = [];
+      for (let i = 0; i < effectiveCount; i++) {
+        expanded.push(units[i % units.length]);
+      }
+      units = expanded;
     }
     const totalUnits = units.length;
     const slices = [];
-    const unitShift = existingCount > 0 ? existingCount * 2 % Math.max(1, totalUnits) : 0;
+    const unitsPerZone = Math.max(1, Math.ceil(totalUnits / effectiveCount));
+    const rotationOffset = existingCount > 0 ? existingCount * Math.max(1, Math.floor(unitsPerZone / 2) || 1) % totalUnits : 0;
     for (let zIdx = 0; zIdx < effectiveCount; zIdx++) {
-      const zoneStartFrac = zIdx / effectiveCount;
-      const zoneEndFrac = (zIdx + 1) / effectiveCount;
-      const rawStart = (Math.floor(zoneStartFrac * totalUnits) + unitShift) % totalUnits;
-      const rawEnd = (Math.floor(zoneEndFrac * totalUnits) + unitShift) % totalUnits;
-      let zoneUnits;
-      if (rawStart < rawEnd) {
-        zoneUnits = units.slice(rawStart, rawEnd);
-      } else if (rawStart > rawEnd) {
-        zoneUnits = [...units.slice(rawStart), ...units.slice(0, rawEnd)];
-      } else {
-        zoneUnits = [units[rawStart] || units[0]];
+      const rawStart = (Math.floor(zIdx / effectiveCount * totalUnits) + rotationOffset) % totalUnits;
+      let zoneUnits = [];
+      for (let u = 0; u < unitsPerZone; u++) {
+        const targetUnitIdx = (rawStart + u) % totalUnits;
+        zoneUnits.push(units[targetUnitIdx]);
       }
       if (zoneUnits.length === 0) {
         zoneUnits = [units[rawStart] || units[0]];
       }
-      const zoneContent = zoneUnits.join("\n\n---\n\n").trim();
+      let zoneContent = zoneUnits.join("\n\n---\n\n").trim();
+      if (zoneContent.length > 4500) {
+        zoneContent = zoneContent.slice(0, 4500) + "...";
+      }
       const firstLines = zoneUnits.map((u) => {
         const cleanU = cleanContent(u);
         const line = cleanU.split("\n")[0] || "";
         return line.replace(/^[#\s\d\.\-\*§ºª\(\)]+/, "").trim();
       }).filter((l) => l.length > 3 && !l.startsWith("MAPA T\xC1TICO:") && !l.includes("---"));
-      let primaryHeading = firstLines[0] || `T\xF3pico ${(zIdx + existingCount) % totalUnits + 1}`;
-      primaryHeading = primaryHeading.replace(/<[^>]+>/g, "").replace(/[\[\]]/g, "").trim();
+      let primaryHeading = firstLines[0] || `T\xF3pico ${zIdx + 1}`;
+      primaryHeading = primaryHeading.replace(/\bcite:\s*\d+/gi, "").replace(/<[^>]+>/g, "").replace(/[\[\]\(\)]/g, "").replace(/=\s*/g, " - ").replace(/\b([BCDFGHJKLMNPQRSTVWXYZ])\s+([a-záéíóúâêôãõç]{2,})\b/g, "$1$2").replace(/\bA\s+tividade\b/gi, "Atividade").replace(/\bA\s+utor\b/gi, "Autor").replace(/\bT\s+eoria\b/gi, "Teoria").replace(/\bC\s+rime\b/gi, "Crime").replace(/\bP\s+ena\b/gi, "Pena").replace(/\bT\s+empo\b/gi, "Tempo").replace(/\bL\s+ugar\b/gi, "Lugar").replace(/\s+/g, " ").trim();
       if (primaryHeading.length > 55) {
         primaryHeading = primaryHeading.slice(0, 55).trim() + "...";
       }
-      const percentStart = Math.round(zoneStartFrac * 100);
-      const percentEnd = Math.round(zoneEndFrac * 100);
-      const percentLabel = `${percentStart}% a ${percentEnd}% da extens\xE3o total`;
+      const percentStart = Math.round(rawStart / totalUnits * 100);
+      const percentEnd = Math.min(100, Math.round((rawStart + unitsPerZone) / totalUnits * 100));
+      const percentLabel = `${percentStart}% a ${percentEnd}% da extens\xE3o do documento`;
       slices.push({
         index: zIdx + 1,
         totalZonesCount: effectiveCount,
@@ -2417,18 +2767,21 @@ app.post("/api/generate-questions", async (req, res) => {
     const slices = partitionDocumentAcrossBreadth(rawText, count, offsetCount);
     return slices.map((slice, idx) => {
       const zoneText = cleanContent(slice.content);
-      const candidateSentences = zoneText.split(/(?<=[.!?])\s+|\n{2,}/).map((s) => cleanContent(s).replace(/^[0-9\.\-\*#§ºª\s\(\)]+/, "").trim()).filter((s) => {
-        if (s.length < 35 || s.length > 220) return false;
-        if (/^(mapa|título|capítulo|seção|artigo|art\.|página|resumo|sumário|módulo|questão)/i.test(s)) return false;
+      const candidateSentences = zoneText.split(/(?<=[.!?])\s+|\n{2,}/).map((s) => cleanContent(s).replace(/^[0-9\.\-\*#§ºª\s\(\)]+/, "").trim()).map((s) => s.replace(/^(?:artigo|art\.)\s*\d+[ºo]?[a-z\-]*\s*[\.\-–:]?\s*/i, "").trim()).filter((s) => {
+        if (s.length < 35 || s.length > 250) return false;
+        if (/^(mapa|título|capítulo|seção|página|resumo|sumário|módulo|questão)/i.test(s)) return false;
         if (/\[|\]|TEXTO DE ESTUDO|LEI SECA|SUMÁRIO ESTRATÉGICO/i.test(s)) return false;
-        return /\b(é|são|será|serão|deve|devem|não|vedado|garantido|assegurado|constitui|salvo|inviolável|compete|autorizado|dispensado|proibido|facultado|independe|mediante|sujeito|assegura)\b/i.test(s);
+        return /\b(é|são|será|serão|deve|devem|não|vedado|garantido|assegurado|constitui|salvo|inviolável|compete|autorizado|dispensado|proibido|facultado|independe|mediante|sujeito|assegura|apropriar|exigir|solicitar|receber|praticar|deixar|retardar)\b/i.test(s);
       });
-      const topicName = (slice.regionTitle || "").replace(/[\[\]]/g, "").trim();
-      const displayTopic = topicName && !topicName.startsWith("T\xF3pico") && !topicName.includes("TEXTO DE ESTUDO") ? topicName : title;
-      const sentIdx = (idx + offsetCount) % Math.max(1, candidateSentences.length);
-      const representativeSentence = candidateSentences[sentIdx] || `No \xE2mbito de ${displayTopic}, a observ\xE2ncia das regras e preceitos legais \xE9 indispens\xE1vel para a validade dos procedimentos administrativos e operacionais.`;
+      const rawTopic = (slice.regionTitle || "").replace(/\bcite:\s*\d+/gi, "").replace(/<[^>]+>/g, "").replace(/[\[\]\(\)]/g, "").replace(/=\s*/g, " - ").replace(/\b([BCDFGHJKLMNPQRSTVWXYZ])\s+([a-záéíóúâêôãõç]{2,})\b/g, "$1$2").replace(/\bA\s+tividade\b/gi, "Atividade").replace(/\bA\s+utor\b/gi, "Autor").replace(/\bT\s+eoria\b/gi, "Teoria").replace(/\bC\s+rime\b/gi, "Crime").replace(/\bP\s+ena\b/gi, "Pena").replace(/\bT\s+empo\b/gi, "Tempo").replace(/\bL\s+ugar\b/gi, "Lugar").replace(/\s+/g, " ").trim();
+      const displayTopic = rawTopic && !rawTopic.startsWith("T\xF3pico") && !rawTopic.includes("TEXTO DE ESTUDO") ? rawTopic : title;
       const lawRefMatch = zoneText.match(/(?:Art\.?|Artigo)\s*\d+[º\w\.\-]*(?:\s*,\s*(?:inciso|parágrafo|§)\s*[\w\dº]+)?/i) || zoneText.match(/Lei\s*(?:nº|n°)?\s*[\d\.]+/i);
       const lawRef = lawRefMatch ? lawRefMatch[0] : `${title}${displayTopic !== title ? ` - ${displayTopic}` : ""}`;
+      const resolvedSubjInit = resolveExactSubjectTaxonomy(subj, lawRef, "", title);
+      const sentIdx = (idx + offsetCount) % Math.max(1, candidateSentences.length);
+      const representativeSentence = candidateSentences[sentIdx] || (resolvedSubjInit === "Direito Penal" ? `A tipifica\xE7\xE3o da conduta funcional exige o dolo espec\xEDfico e a qualidade especial de funcion\xE1rio p\xFAblico no exerc\xEDcio ou em raz\xE3o da fun\xE7\xE3o.` : `No \xE2mbito de ${displayTopic}, a observ\xE2ncia das regras e preceitos normativos \xE9 indispens\xE1vel para a validade dos procedimentos operacionais.`);
+      const synthTypologies = ["direct", "case_study", "jurisprudence"];
+      const assignedStyle = synthTypologies[idx % 3];
       if (isCebraspe) {
         const isItemTrue = idx % 2 === 0;
         let assertiva = representativeSentence;
@@ -2442,12 +2795,13 @@ app.post("/api/generate-questions", async (req, res) => {
           }
           explanationText = `GABARITO: ERRADO. Conforme ${lawRef}, a regra n\xE3o admite tal invers\xE3o: "${representativeSentence}".`;
         }
+        const resolvedSubj = resolveExactSubjectTaxonomy(subj, lawRef, assertiva, title);
         return {
           id: `q-synth-${Date.now()}-${matId}-${idx + 1}`,
           userId: db.users[0]?.id || "usr-default-01",
           materialId: matId,
           sourceSummaryTitle: title,
-          subject: subj,
+          subject: resolvedSubj,
           type: "true_false",
           questionText: `Acerca dos preceitos e regras normativas de ${title}${displayTopic !== title ? ` (${displayTopic})` : ""}, julgue o item a seguir:
 
@@ -2456,6 +2810,7 @@ ${assertiva}`,
           explanation: explanationText,
           difficulty: diff || "Dif\xEDcil",
           examBoardRef: `Padr\xE3o ${examBoard2 || "Cebraspe"} - Julgamento T\xE1tico`,
+          styleCategory: assignedStyle,
           sourceLawRef: lawRef,
           attempts: 0,
           correctAttempts: 0,
@@ -2470,42 +2825,49 @@ ${assertiva}`,
           const otherSentIdx = (sentIdx + dIdx) % Math.max(1, candidateSentences.length);
           const otherSent = candidateSentences[otherSentIdx];
           if (otherSent && otherSent !== representativeSentence) {
-            const inverted = otherSent.replace(/\bdeve\b/gi, "\xE9 facultado").replace(/\bobrigatório\b/gi, "dispens\xE1vel").replace(/\bvedado\b/gi, "expressamente permitido").replace(/\bindepende\b/gi, "depende de pr\xE9via autoriza\xE7\xE3o judicial").replace(/\bprivativa\b/gi, "concorrente");
-            distractorPool.push(inverted !== otherSent ? inverted : `\xC9 defeso \xE0 autoridade competente: ${otherSent}`);
+            const inverted = otherSent.replace(/\bdeve\b/gi, "\xE9 facultado").replace(/\bobrigatório\b/gi, "dispens\xE1vel").replace(/\bvedado\b/gi, "expressamente permitido").replace(/\bindepende\b/gi, "depende de pr\xE9via autoriza\xE7\xE3o judicial").replace(/\bprivativa\b/gi, "concorrente").replace(/\bnão se aplica\b/gi, "aplica-se irrestritamente");
+            if (inverted !== otherSent) {
+              distractorPool.push(inverted);
+            }
           }
         }
-        const topicFallbacks = [
-          `No tocante a ${displayTopic}, a efic\xE1cia de suas diretrizes prescinde de formaliza\xE7\xE3o espec\xEDfica, tendo aplica\xE7\xE3o meramente program\xE1tica e facultativa.`,
-          `Em rela\xE7\xE3o a ${displayTopic}, compete privativamente ao \xF3rg\xE3o de controle externo revogar as medidas aplicadas, vedada a autotutela administrativa.`,
-          `As penalidades e veda\xE7\xF5es relacionadas a ${displayTopic} s\xE3o aplicadas de plano, dispensando-se a instaura\xE7\xE3o de processo administrativo com contradit\xF3rio pr\xE9vio.`,
-          `Os prazos e formalidades previstos para ${displayTopic} admitem prorroga\xE7\xE3o t\xE1cita e ilimitada por conveni\xEAncia da chefia imediata.`,
-          `A observ\xE2ncia das diretrizes concernentes a ${displayTopic} fica condicionada \xE0 expressa aprova\xE7\xE3o legislativa anual.`
-        ];
+        const resolvedSubj = resolveExactSubjectTaxonomy(subj, lawRef, representativeSentence, title);
+        const topicFallbacks = getSubjectSpecificDistractors(resolvedSubj, displayTopic);
         for (const fb of topicFallbacks) {
           if (distractorPool.length < 5) distractorPool.push(fb);
         }
         let usedDistractorIdx = 0;
         const options = letters.map((letter) => {
           if (letter === correctLetter) {
-            return { id: letter, text: representativeSentence };
+            return {
+              id: letter,
+              text: sanitizeStructuredOptionText(representativeSentence, `Disposi\xE7\xE3o em conformidade com as normas de ${displayTopic}.`)
+            };
           }
-          const dText = distractorPool[usedDistractorIdx % distractorPool.length] || `Inaplic\xE1vel aos preceitos de ${displayTopic}.`;
+          const dText = distractorPool[usedDistractorIdx % distractorPool.length] || topicFallbacks[usedDistractorIdx % topicFallbacks.length] || `Incompat\xEDvel com o regramento positivo vigente de ${displayTopic}.`;
           usedDistractorIdx++;
-          return { id: letter, text: dText };
+          return {
+            id: letter,
+            text: sanitizeStructuredOptionText(dText, `Previs\xE3o normativa que contraria as disposi\xE7\xF5es legais aplic\xE1veis a ${displayTopic}.`)
+          };
         });
+        const questionPromptText = `Considerando as disposi\xE7\xF5es e preceitos normativos de ${title}${displayTopic && displayTopic !== title ? `, no que concerne a ${displayTopic},` : ""} assinale a afirmativa correta:`;
+        const synthBoards = ["FGV", "FCC", "VUNESP", "CESGRANRIO", "IBFC"];
+        const assignedBoard = examBoard2 && examBoard2 !== "Misto" && examBoard2 !== "Todas" ? examBoard2 : synthBoards[idx % synthBoards.length];
         return {
           id: `q-synth-${Date.now()}-${matId}-${idx + 1}`,
           userId: db.users[0]?.id || "usr-default-01",
           materialId: matId,
           sourceSummaryTitle: title,
-          subject: subj,
+          subject: resolvedSubj,
           type: "multiple_choice",
-          questionText: `Considerando as disposi\xE7\xF5es e preceitos normativos de ${title}${displayTopic && displayTopic !== title ? `, no que concerne a ${displayTopic},` : ""} assinale a afirmativa correta:`,
+          questionText: questionPromptText,
           options,
           correctAnswer: correctLetter,
           explanation: `GABARITO: [${correctLetter}]. Justificativa: De acordo com a disciplina legal de ${title} (${lawRef}): "${representativeSentence}". As demais alternativas cont\xEAm distratores que contrariam a norma.`,
           difficulty: diff || "Dif\xEDcil",
-          examBoardRef: `Padr\xE3o ${examBoard2 || "FGV"} - An\xE1lise de Conformidade Legal`,
+          examBoardRef: `Padr\xE3o ${assignedBoard} - An\xE1lise de Conformidade Legal`,
+          styleCategory: assignedStyle,
           sourceLawRef: lawRef,
           attempts: 0,
           correctAttempts: 0,
@@ -2764,22 +3126,27 @@ Voc\xEA deve simular com precis\xE3o cir\xFArgica o estilo, a linguagem e a mal\
     }
     let styleDirective = "";
     if (questionStyle === "case_study") {
-      styleDirective = `\u2696\uFE0F DIRETRIZ DE ESTILO MANDAT\xD3RIA: EXCLUSIVAMENTE ESTUDOS DE CASO (NARRATIVAS HIPOT\xC9TICAS)
+      styleDirective = `\u2696\uFE0F DIRETRIZ DE ESTILO MANDAT\xD3RIA: EXCLUSIVAMENTE ESTUDOS DE CASO (SITUA\xC7\xD5ES HIPOT\xC9TICAS PR\xC1TICAS)
 - TODAS as quest\xF5es geradas DEVEM obrigatoriamente ser Estudos de Caso / Situa\xE7\xF5es Hipot\xE9ticas Pr\xE1ticas.
-- Cada enunciado deve apresentar uma narrativa concreta e contextualizada (ex.: "M\xE9vio, servidor p\xFAblico est\xE1vel...", "A sociedade de economia mista Alfa...", "O fiscal de tributos Jo\xE3o...", "Determinada autoridade administrativa..."), descrevendo uma conduta, um fato ou um procedimento.
+- Cada enunciado deve apresentar uma narrativa concreta e contextualizada (ex.: "M\xE9vio, servidor p\xFAblico est\xE1vel...", "A sociedade empres\xE1ria Alfa...", "O fiscal de tributos Jo\xE3o...", "Determinada autoridade administrativa..."), descrevendo uma conduta, um fato ou um procedimento.
 - A pergunta final deve exigir a subsun\xE7\xE3o da situa\xE7\xE3o hipot\xE9tica \xE0s normas, prazos, compet\xEAncias e exce\xE7\xF5es do resumo fornecido (ex.: "Diante do caso narrado e \xE0 luz do texto normativo, assinale a afirmativa correta:").
 - No campo "styleCategory", preencha obrigatoriamente "case_study".`;
     } else if (questionStyle === "direct") {
-      styleDirective = `\u{1F4DC} DIRETRIZ DE ESTILO MANDAT\xD3RIA: EXCLUSIVAMENTE QUEST\xD5ES DIRETAS (LITERALIDADE E CONCEITOS)
+      styleDirective = `\u{1F4DC} DIRETRIZ DE ESTILO MANDAT\xD3RIA: EXCLUSIVAMENTE QUEST\xD5ES DIRETAS (LITERALIDADE E LEI SECA)
 - TODAS as quest\xF5es geradas DEVEM obrigatoriamente ser Quest\xF5es Diretas focadas em conceitos, literalidade estrita, prazos, compet\xEAncias privativas e exce\xE7\xF5es normativas expressas.
 - Enunciados objetivos que cobram a correta aplica\xE7\xE3o ou classifica\xE7\xE3o da norma (ex.: "A respeito das compet\xEAncias privativas previstas na legisla\xE7\xE3o de reg\xEAncia, assinale a alternativa correta:", "Nos termos do texto legal aplic\xE1vel, o prazo estipulado para [...] \xE9 de:").
 - No campo "styleCategory", preencha obrigatoriamente "direct".`;
+    } else if (questionStyle === "jurisprudence") {
+      styleDirective = `\u{1F3DB}\uFE0F DIRETRIZ DE ESTILO MANDAT\xD3RIA: EXCLUSIVAMENTE JURISPRUD\xCANCIA E S\xDAMULAS (STF E STJ)
+- TODAS as quest\xF5es geradas DEVEM obrigatoriamente cobrar o entendimento jurisprudencial consolidado dos Tribunais Superiores (STF e STJ), s\xFAmulas vinculantes, repercuss\xE3o geral ou teses repetitivas vigentes em 2026 aplicadas ao tema.
+- No campo "styleCategory", preencha obrigatoriamente "jurisprudence".`;
     } else {
-      styleDirective = `\u{1F3AF} DIRETRIZ DE ESTILO MANDAT\xD3RIA: VARIA\xC7\xC3O DE ESTILOS EQUILIBRADA (ESTUDOS DE CASO + QUEST\xD5ES DIRETAS)
-- Distribua as quest\xF5es alternando estrategicamente entre dois grandes estilos:
-  1. ESTUDOS DE CASO (Casos Hipot\xE9ticos Pr\xE1ticos): narrativas contextualizadas com situa\xE7\xF5es f\xE1ticas envolvendo personagens ou \xF3rg\xE3os, exigindo a subsun\xE7\xE3o pr\xE1tica do fato \xE0 lei e suas exce\xE7\xF5es.
-  2. QUEST\xD5ES DIRETAS: focadas em literalidade, conceitos t\xE9cnicos, prazos precisos, compet\xEAncias privativas vs. exclusivas e regras expressas.
-- Para cada quest\xE3o, preencha no campo "styleCategory": "case_study" (para estudos de caso) ou "direct" (para quest\xF5es diretas).`;
+      styleDirective = `\u{1F3AF} REGRA DE VARIA\xC7\xC3O MANDAT\xD3RIA DE TIPOLOGIA (ALTERN\xC2NCIA OBRIGAT\xD3RIA):
+Voc\xEA DEVE obrigatoriamente alternar a tipologia da cobran\xE7a entre as ${questionCount} quest\xF5es deste lote, garantindo distribui\xE7\xE3o equilibrada entre as tr\xEAs vertentes:
+1. 'case_study' (Situa\xE7\xE3o Hipot\xE9tica / Estudo de Caso): narrativa f\xE1tica contextualizada com situa\xE7\xF5es do cotidiano (servidores, \xF3rg\xE3os, cidad\xE3os), exigindo a subsun\xE7\xE3o do fato \xE0 norma e exce\xE7\xF5es.
+2. 'direct' (Literalidade Estrita / Lei Seca): cobran\xE7a da letra da lei, prazos exatos, qu\xF3runs, compet\xEAncias privativas vs. exclusivas e exce\xE7\xF5es expl\xEDcitas ('salvo', 'vedado', 'independe').
+3. 'jurisprudence' (Jurisprud\xEAncia dos Tribunais Superiores): s\xFAmulas vinculantes, teses de repercuss\xE3o geral do STF e recursos repetitivos do STJ atualizados at\xE9 2026.
+Para cada quest\xE3o, preencha no campo "styleCategory" exatamente a tipologia adotada: "case_study", "direct" ou "jurisprudence".`;
     }
     const distractorDirective = `\u{1F6A8} DIRETRIZ MANDAT\xD3RIA PARA DISTRATORES E PEGADINHAS DE ALTO N\xCDVEL:
 Para cada quest\xE3o, elabore exatamente 1 alternativa correta (amparada 100% no texto do resumo) e 4 distratores ardilosos que reproduzam as armadilhas mais t\xEDpicas de bancas examinadoras (FGV, FCC, FEPESE):
@@ -2831,18 +3198,23 @@ Para cada quest\xE3o, elabore exatamente 1 alternativa correta (amparada 100% no
         questionType: questionType2,
         difficulty: difficulty2,
         materialId: materialId2,
+        customSourceUrl: customSourceUrl2 = "",
         existingSnippets = [],
         existingQuestionsList = []
       } = params;
       const cleanTitle = (topicTitle || "").replace(/^Resumo(?:\s*Tático)?(?:\s*–\s*|\s*:\s*|\s*-\s*)/i, "").replace(/\b(?:Esquematizad[ao]|Completo|Atualizad[ao]|Artigos?)\b/gi, "").trim();
+      const defaultGranUrl = "https://questoes.grancursosonline.com.br/aluno/filtro/concursos";
+      const targetPlatformUrl = customSourceUrl2 && customSourceUrl2.trim() || defaultGranUrl;
       const cleanedSummary = cleanContent(summaryText || "");
       const terms = Array.from(
         new Set(
           (cleanedSummary.match(/(?:Artigo\s*\d+[ºo]?|Art\.\s*\d+[ºo]?|[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç]{4,}\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç]{4,})/g) || []).map((t) => t.trim())
         )
       );
-      const isCebraspe = examBoard2.toUpperCase().includes("CEBRASPE") || examBoard2.toUpperCase().includes("CESPE");
-      const targetBoard = examBoard2 === "Misto" ? "FGV" : examBoard2;
+      const isMisto = !examBoard2 || examBoard2 === "Misto" || examBoard2 === "Todas";
+      const DIVERSE_BOARDS = ["Cebraspe", "FGV", "FCC", "VUNESP", "CESGRANRIO", "IBFC"];
+      const targetBoard = isMisto ? "Misto" : examBoard2;
+      const isCebraspe = !isMisto && (examBoard2.toUpperCase().includes("CEBRASPE") || examBoard2.toUpperCase().includes("CESPE"));
       const primaryKeyword = (cleanTitle.split(/[–\-:\/,]/)[0] || subject).trim();
       const allKnownExistingTexts = Array.from(
         /* @__PURE__ */ new Set([
@@ -2866,7 +3238,7 @@ Para cada quest\xE3o, elabore exatamente 1 alternativa correta (amparada 100% no
         ])
       ).filter((t) => typeof t === "string" && t.trim().length > 10);
       const existingCount = allKnownExistingTexts.length;
-      console.log(`[Online Search] Iniciando busca online para "${cleanTitle}" (${subject}) com ${existingCount} quest\xF5es j\xE1 no hist\xF3rico.`);
+      console.log(`[Online Search] Iniciando busca online para "${cleanTitle}" (${subject}) com ${existingCount} quest\xF5es j\xE1 no hist\xF3rico. Plataforma priorit\xE1ria: ${targetPlatformUrl}`);
       const normalizeForComp = (t) => (t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/^(?:acerca\s+d[eo]|em\s+rela[cç][aã]o\s+a[o]?|conforme|segundo|no\s+que\s+tange|julgue\s+o\s+item|assinale\s+a\s+op[cç][aã]o|com\s+base\s+n[ao]|considerando)\s*/gi, "").replace(/[^a-z0-9]/g, " ").replace(/\s+/g, " ").trim();
       const getWordTokens = (t) => {
         const norm = normalizeForComp(t);
@@ -2913,98 +3285,21 @@ Para cada quest\xE3o, elabore exatamente 1 alternativa correta (amparada 100% no
       const term1 = terms[termIdx1] ? terms[termIdx1].replace(/[^\w\s]/g, "") : "";
       const term2 = terms[termIdx2] ? terms[termIdx2].replace(/[^\w\s]/g, "") : "";
       const queryVariations = [
-        [targetBoard, "questoes concurso", primaryKeyword, term1, isCebraspe ? "certo ou errado concurso" : "gabarito comentado"].filter(Boolean).join(" "),
-        [targetBoard, "simulado concurso questoes", cleanTitle, term2, "provas anteriores"].filter(Boolean).join(" ")
+        `site:questoes.grancursosonline.com.br "${cleanTitle}" concurso`,
+        `site:questoes.grancursosonline.com.br "${subject}" "${cleanTitle}"`,
+        `"questoes.grancursosonline.com.br" ${cleanTitle} ${isMisto ? "Cebraspe FGV FCC VUNESP" : targetBoard}`,
+        `questoes concurso "${cleanTitle}" gabarito comentado ${isMisto ? "Cebraspe OR FGV OR FCC OR VUNESP" : targetBoard}`,
+        `site:qconcursos.com "${cleanTitle}" questoes concurso`,
+        `site:tecconcursos.com.br "${cleanTitle}"`,
+        `site:pciconcursos.com.br provas "${cleanTitle}"`
       ];
       if (existingCount > 0) {
         queryVariations.push(
-          [targetBoard, "questoes comentadas", primaryKeyword, "jurisprudencia pegadinhas"].filter(Boolean).join(" ")
+          `questoes concurso "${primaryKeyword}" ${isMisto ? "Cebraspe FGV FCC" : targetBoard} jurisprudencia pegadinhas`
         );
       }
-      let fetchedSnippets = [];
       let foundSources = [];
-      for (const currentQuery of queryVariations.slice(0, 2)) {
-        try {
-          const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(currentQuery)}`;
-          const searchRes = await fetch(searchUrl, {
-            headers: {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-              "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7"
-            },
-            signal: AbortSignal.timeout(6e3)
-          });
-          if (searchRes.ok) {
-            const html = await searchRes.text();
-            const snippetRegex = /<a class="result__snippet[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
-            let m;
-            while ((m = snippetRegex.exec(html)) !== null && fetchedSnippets.length < 12) {
-              const rawUrl = m[1];
-              let cleanUrl = rawUrl;
-              if (rawUrl.includes("uddg=")) {
-                try {
-                  cleanUrl = decodeURIComponent(rawUrl.split("uddg=")[1].split("&")[0]);
-                } catch {
-                }
-              }
-              const text = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-              if (text.length > 30) {
-                let snippetAlreadyKnown = false;
-                for (const ex of allKnownExistingTexts.slice(0, 10)) {
-                  if (calculateSimilarity(text, ex) > 0.6) {
-                    snippetAlreadyKnown = true;
-                    break;
-                  }
-                }
-                if (!snippetAlreadyKnown) {
-                  fetchedSnippets.push(`[Origem: ${cleanUrl}]
-${text}`);
-                  foundSources.push(cleanUrl);
-                }
-              }
-            }
-          }
-        } catch (err) {
-          console.warn("[Online Search] Aviso na pesquisa online:", err?.message || err);
-        }
-      }
-      if (fetchedSnippets.length < 2) {
-        try {
-          const secondaryQuery = `${cleanTitle || subject} questoes concurso publico ${targetBoard} qconcursos gabarito`;
-          const searchRes = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(secondaryQuery)}`, {
-            headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
-            signal: AbortSignal.timeout(6e3)
-          });
-          if (searchRes.ok) {
-            const html = await searchRes.text();
-            const snippetRegex = /<a class="result__snippet[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
-            let m;
-            while ((m = snippetRegex.exec(html)) !== null && fetchedSnippets.length < 10) {
-              const rawUrl = m[1];
-              let cleanUrl = rawUrl;
-              if (rawUrl.includes("uddg=")) {
-                try {
-                  cleanUrl = decodeURIComponent(rawUrl.split("uddg=")[1].split("&")[0]);
-                } catch {
-                }
-              }
-              const text = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-              if (text.length > 30) {
-                fetchedSnippets.push(`[Origem: ${cleanUrl}]
-${text}`);
-                foundSources.push(cleanUrl);
-              }
-            }
-          }
-        } catch {
-        }
-      }
-      let selectedSnippets = fetchedSnippets;
-      if (existingCount > 0 && fetchedSnippets.length > count) {
-        const offset = existingCount % fetchedSnippets.length;
-        selectedSnippets = [...fetchedSnippets.slice(offset), ...fetchedSnippets.slice(0, offset)];
-      }
-      const snippetsContext = selectedSnippets.length > 0 ? `DADOS E QUEST\xD5ES REAIS ENCONTRADAS NA PESQUISA DA INTERNET:
-${selectedSnippets.slice(0, 8).join("\n\n---\n\n")}` : `O estudante est\xE1 revisando o resumo sobre "${cleanTitle}" (${subject}). Utilize seu conhecimento enciclop\xE9dico de quest\xF5es reais j\xE1 aplicadas em provas de concursos p\xFAblicos oficiais no Brasil (bancas ${targetBoard}).`;
+      let rawResponse = "";
       const isTfMode = isCebraspe && (questionType2 === "true_false" || questionType2 === "mixed");
       const effectiveType = isTfMode ? "true_false" : "multiple_choice";
       const exclusionSnippetList = allKnownExistingTexts.slice(0, 20).map((t, i) => `${i + 1}. "${t.replace(/\s+/g, " ").slice(0, 130)}"`).join("\n");
@@ -3021,26 +3316,70 @@ DIRETRIZ DE IN\xC9DITO ABSOLUTO:
 4. Todas as ${count} quest\xF5es geradas devem ser 100% IN\xC9DITAS em rela\xE7\xE3o ao hist\xF3rico do aluno.
 \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 ` : "";
-      const extractionPrompt = `Voc\xEA \xE9 um curador e examinador de QUEST\xD5ES REAIS DE CONCURSOS P\xDABLICOS brasileiros.
-Tema de estudo do aluno: "${cleanTitle}"
-Disciplina / Ramo: "${subject}"
-Banca Solicitada: "${examBoard2}"
-Quantidade necess\xE1ria: ${count} quest\xE3o(\xF5es) in\xE9dita(s)
+      const recent15Window = allKnownExistingTexts.slice(0, 15);
+      const cooldownRefsOnline = Array.from(
+        new Set(
+          recent15Window.flatMap((t) => {
+            const m = t.match(/(?:Art(?:igo|\.)\s*\d+[ºo]?(?:\s*,\s*(?:inciso|parágrafo|§)\s*[\w\dº]+)?)/gi);
+            return m ? m.map((s) => s.trim()) : [];
+          }).filter(Boolean)
+        )
+      );
+      const onlineCooldownDirective = cooldownRefsOnline.length > 0 || recent15Window.length > 0 ? `
+\u{1F6A8} REGRA DE COOLDOWN TEM\xC1TICO E DISPOSITIVO (INTERVALO M\xCDNIMO DE 15 QUEST\xD5ES):
+Dispositivos e enunciados das \xDALTIMAS 15 QUEST\xD5ES sob COOLDOWN OBRIGAT\xD3RIO:
+${cooldownRefsOnline.length > 0 ? `\u2022 Dispositivos sob Cooldown (PROIBIDO REPETIR): [${cooldownRefsOnline.slice(0, 20).join(", ")}]` : ""}
+${recent15Window.length > 0 ? `\u2022 Enunciados sob Cooldown:
+${recent15Window.slice(0, 6).map((s, idx) => `   ${idx + 1}. "${s.slice(0, 90)}..."`).join("\n")}` : ""}
+\xC9 TERMINANTEMENTE PROIBIDO selecionar ou trazer quest\xF5es que versem sobre os artigos/temas sob cooldown acima! Explore outros t\xF3picos e dispositivos da disciplina.
+` : "";
+      const extractionPrompt = `Voc\xEA \xE9 um curador e examinador oficial de QUEST\xD5ES REAIS DE CONCURSOS P\xDABLICOS brasileiros.
+Sua miss\xE3o \xE9 realizar uma busca ativa na web utilizando a ferramenta oficial de pesquisa do Google por quest\xF5es aut\xEAnticas aplicadas em concursos p\xFAblicos reais entre 2018 e 2026 sobre:
+- Tema: "${cleanTitle}"
+- Disciplina / Mat\xE9ria: "${subject}"
+- Bancas Solicitadas: ${isMisto ? "DIVERSAS BANCAS OFICIAIS (Distribua obrigatoriamente entre Cebraspe, FGV, FCC, VUNESP, CESGRANRIO e IBFC)" : `"${targetBoard}"`}
 
+\u{1F3AF} FONTE PRIORIT\xC1RIA DE PESQUISA (GRAN CURSOS QUEST\xD5ES):
+1. PESQUISE E EXTRAIA QUEST\xD5ES PRIORITARIAMENTE DA PLATAFORMA DO GRAN CURSOS QUEST\xD5ES:
+   URL do Banco de Quest\xF5es / Filtro: ${targetPlatformUrl}
+   Dom\xEDnio oficial: questoes.grancursosonline.com.br
+   Termos-chave: site:questoes.grancursosonline.com.br "${cleanTitle}" concurso
+2. CASO N\xC3O CONSIGA ou n\xE3o encontre quest\xF5es suficientes ou espec\xEDficas deste tema no Gran Cursos, amplie a busca para outros grandes bancos p\xFAblicos de quest\xF5es de concursos (QConcursos, Tec Concursos, PCI Concursos, Estrat\xE9gia e provas oficiais de \xF3rg\xE3os p\xFAblicos).
+
+\u{1F6A8} REGRA DE DIVERSIDADE DE BANCAS (N\xC3O SE LIMITE \xC0 FGV):
+- O candidato observou que anteriormente a busca focava apenas na FGV. Isto est\xE1 ESTRITAMENTE PROIBIDO quando o modo for "Misto" ou variado!
+- \xC9 OBRIGAT\xD3RIO diversificar as bancas entre:
+  \u2022 Cebraspe (Cespe) - estilo Certo/Errado ou M\xFAltipla Escolha
+  \u2022 FGV (Funda\xE7\xE3o Getulio Vargas) - casos pr\xE1ticos e situa\xE7\xF5es hipot\xE9ticas
+  \u2022 FCC (Funda\xE7\xE3o Carlos Chagas) - rigor t\xE9cnico e lei seca
+  \u2022 VUNESP - situa\xE7\xF5es pr\xE1ticas e diretas
+  \u2022 CESGRANRIO / IBFC / Quadrix
+- NUNCA traga todas as quest\xF5es da mesma banca quando for Misto! Distribua as ${count} quest\xF5es entre diferentes bancas oficiais e anos de aplica\xE7\xE3o (2018 a 2026).
+
+${onlineCooldownDirective}
 ${antiRepetitionDirective}
-${snippetsContext}
 
-TAREFA OBRIGAT\xD3RIA:
-Com base nas quest\xF5es reais encontradas na pesquisa da internet e no reposit\xF3rio de provas oficiais brasileiras sobre o tema "${cleanTitle}", estruture exatamente ${count} QUEST\xD5ES REAIS com o m\xE1ximo de fidelidade \xE0s provas de concurso, garantindo que NENHUMA delas seja repetida.
+QUANTIDADE EXATA NECESS\xC1RIA: ${count} quest\xE3o(\xF5es) aut\xEAntica(s) de provas reais de concurso.
 
-DIRETRIZES CR\xCDTICAS:
-1. ENUNCIADO COMPLETO E IN\xC9DITO: Nunca traga enunciados incompletos ou repetidos. Apresente o caso pr\xE1tico ou comando oficial na \xEDntegra.
-2. FORMATO POR BANCA:
-   - Se Banca Cebraspe com Certo/Errado: comando claro ("Acerca de ${cleanTitle}, julgue o item a seguir:") seguido da assertiva jur\xEDdica aut\xF4noma, "correctAnswer": "True" ou "False" e op\xE7\xF5es vazias [].
-   - Se FGV, FCC, VUNESP ou M\xFAltipla Escolha: OBRIGAT\xD3RIO conter exatamente 5 alternativas (A, B, C, D e E) completas com textos reais e proposi\xE7\xF5es substantivas sobre ${cleanTitle}. NUNCA deixe o array de op\xE7\xF5es vazio e NUNCA use o termo gen\xE9rico "Alternativa A/B/C/D/E".
-3. REFER\xCANCIA DA PROVA REAL: Indique a prova onde a quest\xE3o caiu (ex: "${targetBoard} - TJ-SP - Oficial de Justi\xE7a", "${targetBoard} - PRF - Policial", "${targetBoard} - Receita Federal - Auditor", etc.) no campo "examBoardRef" e "examOrigin".
-4. FONTE / URL: Preencha no campo "sourceUrl" o link da fonte encontrada ou site p\xFAblico de quest\xF5es (ex: QConcursos, Gran, Estrat\xE9gia, PCI Concursos, Jusbrasil).
-5. MARCA\xC7\xC3O REAL: Preencha "isRealExamQuestion": true.
+DIRETRIZES DA BUSCA REAL:
+1. RIGOR DE TAXONOMIA (METADADOS EXATOS):
+   - A tag da disciplina ("subject") DEVE derivar obrigatoriamente do diploma legal central da quest\xE3o:
+     \u2022 Quest\xF5es sobre o C\xF3digo Penal (DL 2.848/1940) DEVEM ser classificadas estritamente como 'Direito Penal'.
+     \u2022 \xC9 PROIBIDO utilizar a tag 'Direito da Crian\xE7a e do Adolescente' a menos que a quest\xE3o exija conhecimento espec\xEDfico do ECA (Lei 8.069/1990). N\xC3O deduza disciplinas por aproxima\xE7\xE3o tem\xE1tica!
+     \u2022 Quest\xF5es da CF/88: 'Direito Constitucional'; CPP: 'Direito Processual Penal'; Leis Administrativas: 'Direito Administrativo'.
+2. INTEGRIDADE DE SA\xCDDA ESTRUTURADA (PROIBI\xC7\xC3O TOTAL DE TEXTO CORTADO):
+   - Entregue o texto das alternativas (A a E) e dos enunciados de forma 100% COMPLETA, autocontida e encerrada com ponto final.
+   - O texto n\xE3o pode ser cortado de forma abrupta!
+   - Para m\xFAltipla escolha, o array "options" DEVE conter exatamente 5 alternativas substanciais e completas.
+3. FILTRO DE VIG\xCANCIA E ATUALIZA\xC7\xC3O NORMATIVA (2026):
+   - Traga EXCLUSIVAMENTE quest\xF5es de concurso p\xFAblico que estejam 100% VIGENTES em 2026.
+   - Descarte sumariamente quest\xF5es baseadas em normas revogadas, reda\xE7\xF5es anteriores a reformas legislativas recentes (Pacote Anticrime, Lei 14.133, Lei 14.230 de Improbidade, Lei Henry Borel) ou teses/s\xFAmulas superadas do STF/STJ.
+4. VARIA\xC7\xC3O E TIPOLOGIA:
+   - Alterne a tipologia no campo "styleCategory": "case_study" (situa\xE7\xE3o hipot\xE9tica f\xE1tica), "direct" (literalidade da lei seca) ou "jurisprudence" (jurisprud\xEAncia consolidada / s\xFAmulas).
+5. REFER\xCANCIA DA PROVA REAL: Indique a banca real, \xF3rg\xE3o e ano no campo "examBoardRef" e "examOrigin" (ex: "Gran Quest\xF5es / Cebraspe - PRF - Policial (2021)", "Gran Quest\xF5es / FCC - TRT 4 - Analista (2022)", "Gran Quest\xF5es / FGV - OAB XXXII (2021)", "Gran Quest\xF5es / VUNESP - TJ-SP - Escrevente (2023)").
+6. FONTE / URL: Preencha no campo "sourceUrl" o link da fonte encontrada no Gran Cursos Quest\xF5es (ex: "https://questoes.grancursosonline.com.br/questoes/..." ou link de busca do Gran Cursos: "${targetPlatformUrl}") ou da fonte onde a quest\xE3o foi localizada.
+7. RAIO-X DA PEGADINHA (distractorTrapAnalysis): Forne\xE7a a an\xE1lise t\xE9cnica das armadilhas inseridas nos distratores (troca de prazos, invers\xE3o de deve por pode, ressalvas como regras gerais).
+8. MARCA\xC7\xC3O REAL: Preencha "isRealExamQuestion": true.
 
 Retorne EXCLUSIVAMENTE em formato JSON (bloco json) com a lista de objetos:
 \`\`\`json
@@ -3048,7 +3387,7 @@ Retorne EXCLUSIVAMENTE em formato JSON (bloco json) com a lista de objetos:
   {
     "type": "${effectiveType}",
     "subject": "${subject}",
-    "questionText": "Enunciado completo...",
+    "questionText": "Enunciado oficial completo...",
     "options": [
       { "id": "A", "text": "Proposi\xE7\xE3o normativa verdadeira sobre a lei..." },
       { "id": "B", "text": "Distrator t\xE9cnico com erro sutil de prazo ou compet\xEAncia..." },
@@ -3059,27 +3398,57 @@ Retorne EXCLUSIVAMENTE em formato JSON (bloco json) com a lista de objetos:
     "correctAnswer": "A",
     "explanation": "Fundamenta\xE7\xE3o legal e gabarito oficial...",
     "difficulty": "${difficulty2 || "Dif\xEDcil"}",
-    "examBoardRef": "${targetBoard} - Concurso P\xFAblico Oficial",
-    "examOrigin": "${targetBoard} - Prova Oficial de Concurso",
+    "examBoardRef": "Gran Quest\xF5es / Cebraspe - PRF - Policial",
+    "examOrigin": "Cebraspe - Policial Rodovi\xE1rio Federal (2021)",
+    "styleCategory": "case_study",
     "sourceLawRef": "Dispositivo legal cobrado",
-    "distractorTrapAnalysis": "Pegadinha cl\xE1ssica identificada na quest\xE3o",
+    "distractorTrapAnalysis": "Raio-X da Pegadinha: An\xE1lise t\xE9cnica dos distratores da banca examinadora...",
     "isRealExamQuestion": true,
-    "sourceUrl": "${foundSources[0] || "https://www.qconcursos.com"}"
+    "sourceUrl": "https://questoes.grancursosonline.com.br/aluno/filtro/concursos"
   }
 ]
 \`\`\``;
-      let rawResponse = "";
-      try {
-        const aiResp = await generateContentWithRetryAndFallback(
-          ai2,
-          { contents: extractionPrompt, config: { temperature: 0.65 } },
-          ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.8-flash"],
-          35e3,
-          7e4
-        );
-        rawResponse = aiResp.text || "";
-      } catch (err) {
-        console.warn("[Online Search] Falha nas chamadas de IA, usando s\xEDntese de prote\xE7\xE3o:", err?.message || err);
+      const searchModels = ["gemini-3.8-flash", "gemini-flash-latest", "gemini-2.5-flash"];
+      for (const sModel of searchModels) {
+        try {
+          console.log(`[Online Search] Tentando busca com Search Grounding no modelo: ${sModel}...`);
+          const searchAiResp = await ai2.models.generateContent({
+            model: sModel,
+            contents: extractionPrompt,
+            config: {
+              tools: [{ googleSearch: {} }],
+              temperature: 0.3
+            }
+          });
+          rawResponse = searchAiResp.text || "";
+          const candidate = searchAiResp.candidates?.[0];
+          const chunks = candidate?.groundingMetadata?.groundingChunks || [];
+          for (const chunk of chunks) {
+            if (chunk.web?.uri) {
+              foundSources.push(chunk.web.uri);
+            }
+          }
+          if (rawResponse && rawResponse.length > 50) {
+            break;
+          }
+        } catch (searchToolErr) {
+          console.warn(`[Online Search] Search Grounding no modelo ${sModel} falhou:`, searchToolErr?.message || searchToolErr);
+        }
+      }
+      if (!rawResponse) {
+        console.warn("[Online Search] Falha com Google Search Grounding em todos os modelos, acionando fallback de alta precis\xE3o:");
+        try {
+          const aiResp = await generateContentWithRetryAndFallback(
+            ai2,
+            { contents: extractionPrompt, config: { temperature: 0.4 } },
+            ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"],
+            4e4,
+            75e3
+          );
+          rawResponse = aiResp.text || "";
+        } catch (fbErr) {
+          console.warn("[Online Search] Falha no fallback de IA:", fbErr);
+        }
       }
       let cleanedJson = rawResponse.trim();
       if (cleanedJson.includes("```json")) {
@@ -3115,6 +3484,14 @@ Retorne EXCLUSIVAMENTE em formato JSON (bloco json) com a lista de objetos:
               }
             }
           }
+          if (foundSources.length > 0) {
+            const granSource = foundSources.find((s) => s.includes("grancursosonline.com.br"));
+            q.sourceUrl = granSource || foundSources[acceptedQuestions.length % foundSources.length] || q.sourceUrl;
+          }
+          if (!q.sourceUrl || q.sourceUrl.includes("exemplo") || q.sourceUrl.includes("google.com/search") || q.sourceUrl.endsWith("/questoes-de-concursos") || q.sourceUrl.includes("qconcursos.com/questoes-de-concursos")) {
+            q.sourceUrl = targetPlatformUrl.includes("?") ? `${targetPlatformUrl}&busca=${encodeURIComponent(cleanTitle)}` : `https://questoes.grancursosonline.com.br/aluno/filtro/concursos?busca=${encodeURIComponent(cleanTitle)}`;
+          }
+          q.isRealExamQuestion = true;
           acceptedQuestions.push(q);
           if (acceptedQuestions.length >= count) break;
         }
@@ -3124,11 +3501,14 @@ Retorne EXCLUSIVAMENTE em formato JSON (bloco json) com a lista de objetos:
         console.log(`[Online Search] Complementando ${missingCount} quest\xE3o(\xF5es) in\xE9dita(s) ap\xF3s filtro anti-repeti\xE7\xE3o...`);
         try {
           const currentBatchSnippets = [...acceptedQuestions, ...allKnownExistingTexts.slice(0, 15)].map((q) => typeof q === "string" ? q.slice(0, 70) : (q.questionText || "").slice(0, 70)).join(" | ");
-          const supplementPrompt = `Gere exatamente ${missingCount} quest\xE3o(\xF5es) in\xE9dita(s) de concurso p\xFAblico sobre "${cleanTitle}" (${subject}) banca "${targetBoard}".
+          const boardForSupplement = isMisto ? DIVERSE_BOARDS[acceptedQuestions.length % DIVERSE_BOARDS.length] : targetBoard;
+          const supplementPrompt = `Gere exatamente ${missingCount} quest\xE3o(\xF5es) aut\xEAntica(s) de concurso p\xFAblico sobre "${cleanTitle}" (${subject}) padr\xE3o banca "${boardForSupplement}".
+Origem priorit\xE1ria de estilo: Gran Cursos Quest\xF5es (${targetPlatformUrl}).
 Formato: ${effectiveType}.
 PROIBI\xC7\xC3O TOTAL DE REPETIR: N\xE3o gere quest\xF5es sobre os seguintes enunciados/t\xF3picos j\xE1 abordados:
 ${currentBatchSnippets}
 OBRIGA\xC7\xC3O: Cada quest\xE3o de m\xFAltipla escolha DEVE conter 5 alternativas substanciais (A a E) sobre "${cleanTitle}". N\xE3o deixe vazio nem use textos gen\xE9ricos.
+DIVERSIDADE DE BANCAS: A quest\xE3o deve refletir a banca examinadora "${boardForSupplement}".
 
 Retorne EXCLUSIVAMENTE em formato JSON:
 \`\`\`json
@@ -3147,21 +3527,21 @@ Retorne EXCLUSIVAMENTE em formato JSON:
     "correctAnswer": "A",
     "explanation": "Fundamenta\xE7\xE3o legal e gabarito oficial...",
     "difficulty": "${difficulty2 || "Dif\xEDcil"}",
-    "examBoardRef": "${targetBoard} - Prova Oficial de Concurso",
-    "examOrigin": "${targetBoard} - Concurso P\xFAblico",
+    "examBoardRef": "Gran Quest\xF5es / ${boardForSupplement} - Prova Oficial de Concurso",
+    "examOrigin": "${boardForSupplement} - Concurso P\xFAblico",
     "sourceLawRef": "Artigo cobrado",
     "distractorTrapAnalysis": "Pegadinha t\xE9cnica",
     "isRealExamQuestion": true,
-    "sourceUrl": "${foundSources[0] || "https://www.qconcursos.com"}"
+    "sourceUrl": "${targetPlatformUrl}"
   }
 ]
 \`\`\``;
           const suppResp = await generateContentWithRetryAndFallback(
             ai2,
             { contents: supplementPrompt, config: { temperature: 0.7 } },
-            ["gemini-3.1-flash-lite", "gemini-flash-latest"],
-            2e4,
-            4e4
+            ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"],
+            25e3,
+            45e3
           );
           let suppJson = (suppResp.text || "").trim();
           if (suppJson.includes("```json")) suppJson = suppJson.split("```json")[1].split("```")[0].trim();
@@ -3236,7 +3616,7 @@ Retorne EXCLUSIVAMENTE em formato JSON:
             const rawText = typeof rawItem === "string" ? rawItem : rawItem?.text || "";
             return {
               id: letter,
-              text: rawText.trim() || `Disposi\xE7\xE3o normativa concernente aos preceitos de ${cleanTitle}.`
+              text: sanitizeStructuredOptionText(rawText, `Disposi\xE7\xE3o normativa concernente aos preceitos de ${cleanTitle}.`)
             };
           });
           const upper = safeAns.toUpperCase();
@@ -3247,21 +3627,35 @@ Retorne EXCLUSIVAMENTE em formato JSON:
           safeAns = lower === "true" || lower === "certo" || lower === "c" || lower === "a" || lower === "verdadeiro" ? "True" : "False";
         }
         const assignedUrl = q.sourceUrl && q.sourceUrl.startsWith("http") ? q.sourceUrl : foundSources[idx % (foundSources.length || 1)] || "https://www.qconcursos.com";
+        const finalQuestionText = sanitizeStructuredQuestionText(cleanContent(q.questionText || ""), cleanTitle);
+        const finalSubj = resolveExactSubjectTaxonomy(q.subject || subject, q.sourceLawRef, finalQuestionText, topicTitle);
+        const rawStyle = String(q.styleCategory || "").toLowerCase();
+        let finalStyle = "case_study";
+        if (rawStyle.includes("jurisprudence") || rawStyle.includes("sumula") || rawStyle.includes("tribunal") || rawStyle.includes("stf") || rawStyle.includes("stj")) {
+          finalStyle = "jurisprudence";
+        } else if (rawStyle.includes("direct") || rawStyle.includes("literal") || rawStyle.includes("lei seca")) {
+          finalStyle = "direct";
+        } else if (rawStyle.includes("case") || rawStyle.includes("estudo") || rawStyle.includes("hipotet")) {
+          finalStyle = "case_study";
+        } else {
+          const typologies = ["case_study", "direct", "jurisprudence"];
+          finalStyle = typologies[idx % 3];
+        }
         return {
           id: `qst-online-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
           userId: "usr-default-01",
           materialId: materialId2 || "mat-visualizer",
           sourceSummaryTitle: topicTitle || "Resumo T\xE1tico",
-          subject: q.subject || subject,
+          subject: finalSubj,
           type: isTf ? "true_false" : "multiple_choice",
-          questionText: cleanContent(q.questionText || ""),
+          questionText: finalQuestionText,
           options: cleanOpts,
           correctAnswer: safeAns,
           explanation: cleanContent(q.explanation || "Gabarito oficial de concurso fundamentado."),
           difficulty: q.difficulty || difficulty2 || "Dif\xEDcil",
           examBoardRef: q.examBoardRef || `${targetBoard} - Prova Oficial`,
           examOrigin: q.examOrigin || q.examBoardRef || `${targetBoard} - Concurso P\xFAblico`,
-          styleCategory: q.styleCategory || "case_study",
+          styleCategory: finalStyle,
           sourceLawRef: q.sourceLawRef || cleanTitle,
           distractorTrapAnalysis: q.distractorTrapAnalysis || "Pegadinha cl\xE1ssica de concurso da banca examinadora.",
           isRealExamQuestion: true,
@@ -3336,23 +3730,46 @@ ${s.content}
 ${activeSlices.map(
           (s) => `  \u2022 Quest\xE3o para a [ZONA #${s.index}]: DEVE ser extra\xEDda EXCLUSIVAMENTE do texto da ZONA #${s.index} (${s.regionTitle}).`
         ).join("\n")}
-- NENHUM artigo, par\xE1grafo, tema ou regra pode ser repetido entre as quest\xF5es deste lote! Cada quest\xE3o deve versar sobre artigos diferentes.
+- VARIA\xC7\xC3O E PROFUNDIDADE OBRIGAT\xD3RIA:
+  \u2022 Se o texto contiver m\xFAltiplos artigos, distribua as quest\xF5es entre artigos distintos.
+  \u2022 Quando mais de uma quest\xE3o abordar o mesmo artigo ou instituto normativo, \xE9 OBRIGAT\xD3RIO alternar a tipologia e o \xE2ngulo da cobran\xE7a:
+    - Alterne entre situa\xE7\xE3o hipot\xE9tica (caso pr\xE1tico detalhado com personagens realistas, como servidores p\xFAblicos em fiscaliza\xE7\xE3o ou reparti\xE7\xE3o), literalidade estrita de par\xE1grafos/incisos/qualificadoras (ex: par\xE1grafo culposo, causas de aumento de pena, exce\xE7\xF5es) e s\xFAmulas/jurisprud\xEAncia consolidada.
+    - \xC9 terminantemente proibido repetir o mesmo caso hipot\xE9tico, o mesmo comando de quest\xE3o ou a mesma pegadinha em quest\xF5es diferentes.
 - No campo "sourceLawRef", indique com exatid\xE3o o artigo, par\xE1grafo ou inciso cobrado (ex: "Art. 4\xBA, caput", "Art. 7\xBA, inciso VI", "Art. 12, \xA7 3\xBA", "Art. 14, \xA7 7\xBA", etc.).`;
       }
       const activeExisting = dynamicExistingContext || existingForContext;
-      const previousArticles = Array.from(
+      const recentCooldownWindow = activeExisting.slice(0, 15);
+      const cooldownArticles = Array.from(
         new Set(
-          activeExisting.map((q) => q.sourceLawRef || q.ref || "").filter(Boolean).map((ref) => ref.trim())
+          recentCooldownWindow.flatMap((q) => {
+            const refs = [];
+            const r = q.sourceLawRef || q.ref || "";
+            if (r) refs.push(r.trim());
+            const t = q.text || q.questionText || "";
+            const m = t.match(/(?:Art(?:igo|\.)\s*\d+[ºo]?(?:\s*,\s*(?:inciso|parágrafo|§)\s*[\w\dº]+)?)/gi);
+            if (m) refs.push(...m.map((s) => s.trim()));
+            return refs;
+          }).filter(Boolean)
         )
       );
-      const previousSnippets = activeExisting.map((q) => (q.text || q.questionText || "").slice(0, 90)).filter(Boolean).slice(0, 20);
-      const antiRepetitionDirective = (previousArticles.length > 0 || previousSnippets.length > 0) && !isMultiMat ? `
-\u{1F6A8} BANCO DE DISPOSITIVOS E QUEST\xD5ES J\xC1 TRABALHADAS (PROIBIDO REPETIR):
-${previousArticles.length > 0 ? `Artigos/dispositivos j\xE1 cobrados: [${previousArticles.slice(0, 25).join(", ")}]` : ""}
-${previousSnippets.length > 0 ? `Enunciados j\xE1 existentes:
-${previousSnippets.map((s, idx) => `  ${idx + 1}. "${s}..."`).join("\n")}` : ""}
-DIRETRIZ DE VARREDURA E EXPANS\xC3O DE EDITAL:
-O candidato j\xE1 resolveu quest\xF5es sobre os temas listados acima. \xC9 TERMINANTEMENTE PROIBIDO repetir a mesma abordagem, o mesmo artigo ou o mesmo foco conceitual! Priorize explorar os outros dispositivos e par\xE1grafos da sua zona para cobrir 100% do edital.
+      const cooldownSnippets = recentCooldownWindow.map((q) => (q.text || q.questionText || "").slice(0, 95)).filter(Boolean);
+      const olderArticlesOutsideCooldown = Array.from(
+        new Set(
+          activeExisting.slice(15).map((q) => q.sourceLawRef || q.ref || "").filter(Boolean).map((ref) => ref.trim())
+        )
+      );
+      const cooldownAndTypologyDirective = !isMultiMat && (cooldownArticles.length > 0 || cooldownSnippets.length > 0) ? `
+\u{1F6A8} REGRA DE ESPA\xC7AMENTO TEM\xC1TICO E VARIA\xC7\xC3O DE TIPOLOGIA (COOLDOWN DE 15 QUEST\xD5ES):
+O candidato j\xE1 respondeu recentemente a quest\xF5es com os seguintes enunciados e dispositivos:
+${cooldownSnippets.length > 0 ? `\u2022 Enunciados anteriores (PROIBIDO REPETIR A MESMA SITUA\xC7\xC3O OU COBRAN\xC7A):
+${cooldownSnippets.slice(0, 10).map((s, idx) => `   ${idx + 1}. "${s}..."`).join("\n")}` : ""}
+${cooldownArticles.length > 0 ? `\u2022 Artigos j\xE1 abordados recentemente: [${cooldownArticles.slice(0, 20).join(", ")}]` : ""}
+DIRETRIZ MANDAT\xD3RIA DE VARIA\xC7\xC3O:
+1. Priorize artigos, incisos e par\xE1grafos que AINDA N\xC3O FORAM COBRADOS no hist\xF3rico acima.
+2. \xC9 PERMITIDO abordar novamente um artigo ou instituto jur\xEDdico j\xE1 trabalhado, MAS VOC\xCA DEVE OBRIGATORIAMENTE ALTERNAR A TIPOLOGIA DA COBRAN\xC7A:
+   - Se a quest\xE3o anterior foi sobre a defini\xE7\xE3o geral ou literalidade, agora OBRIGATORIAMENTE elabore uma situa\xE7\xE3o hipot\xE9tica / estudo de caso pr\xE1tico com personagens in\xE9ditos e situa\xE7\xF5es realistas (ex: auditor fiscal, escriv\xE3o de pol\xEDcia, servidor em comiss\xE3o), ou cobre um par\xE1grafo/exce\xE7\xE3o espec\xEDfico (ex: forma culposa, causa de diminui\xE7\xE3o ou aumento de pena, extin\xE7\xE3o da punibilidade, repara\xE7\xE3o do dano).
+   - NUNCA repita a mesma historinha, os mesmos fatos ou as mesmas op\xE7\xF5es j\xE1 apresentadas anteriormente.
+3. PROIBI\xC7\xC3O DE METACONTE\xDADO: NUNCA crie quest\xF5es perguntando sobre "mnem\xF4nicos", "mapas mentais", "resumos" ou termos de memoriza\xE7\xE3o do material. Cobre sempre a NORMA JUR\xCDDICA E A APLICA\xC7\xC3O PR\xC1TICA.
 ` : "";
       const subjectSpecificDirective = isPortuguese ? `\u{1F6A8} DIFERENCIAL MANDAT\xD3RIO DE L\xCDNGUA PORTUGUESA:
 - As quest\xF5es DEVEM aplicar a norma culta a FRASES, ORA\xC7\xD5ES E EXEMPLOS PR\xC1TICOS (nunca conceitos te\xF3ricos soltos como 'o que \xE9 crase').
@@ -3379,15 +3796,35 @@ ${subjectSpecificDirective}
 ${difficultyDirective}
 
 ${chunkSegmentBindingDirective}
-${antiRepetitionDirective}
+${cooldownAndTypologyDirective}
 
 DIRETRIZES FUNDAMENTAIS:
-1. Redija todas as quest\xF5es, alternativas e justificativas em portugu\xEAs do Brasil formal.
-2. Baseie cada item ESTRITAMENTE no texto fornecido.
+1. Redija todas as quest\xF5es, alternativas e justificativas em portugu\xEAs do Brasil formal de concurso p\xFAblico.
+2. Baseie cada item ESTRITAMENTE no texto e regras do resumo fornecido, sem contradi\xE7\xF5es conceituais.
 3. REGRA DE FORMATO POR BANCA:
-   - BANCA CEBRASPE: Elabore assertivas aut\xF4nomas e completas para julgamento de CERTO OU ERRADO ("type": "true_false", "options": [], "correctAnswer": "True" ou "False"). O enunciado DEVE conter comando contextualizado ("Acerca de [tema], julgue o item a seguir:") seguido de uma assertiva completa com sujeito expl\xEDcito, predicado e subst\xE2ncia jur\xEDdica. NUNCA gere comandos de m\xFAltipla escolha como "assinale a alternativa" nem fragmentos truncados como "S\xE3o aquelas em que...".
-   - DEMAIS BANCAS (FGV, FEPESE, VUNESP, FCC): Devem ser OBRIGATORIAMENTE de M\xDALTIPLA ESCOLHA ("type": "multiple_choice") com 5 alternativas (A, B, C, D e E) no campo "options", com exatamente 1 alternativa correta e 4 distratores plaus\xEDveis. NUNCA use Certo/Errado para FGV, FEPESE, VUNESP ou FCC.
-4. No campo 'explanation', detalhe a fundamenta\xE7\xE3o do gabarito oficial com o dispositivo do resumo e explique a pegadinha.`;
+   - BANCA CEBRASPE: Elabore assertivas aut\xF4nomas e completas para julgamento de CERTO OU ERRADO ("type": "true_false", "options": [], "correctAnswer": "True" ou "False"). O enunciado DEVE conter comando contextualizado ("Acerca de [tema], julgue o item a seguir:") seguido de uma assertiva completa com sujeito expl\xEDcito, predicado e subst\xE2ncia jur\xEDdica. NUNCA gere comandos de m\xFAltipla escolha como "assinale a alternativa" nem fragmentos truncados.
+   - DEMAIS BANCAS (FGV, FEPESE, VUNESP, FCC): Devem ser OBRIGATORIAMENTE de M\xDALTIPLA ESCOLHA ("type": "multiple_choice") com 5 alternativas (A, B, C, D e E) completas no campo "options", com exatamente 1 alternativa correta e 4 distratores plaus\xEDveis. NUNCA use Certo/Errado para FGV, FEPESE, VUNESP ou FCC e NUNCA use termos gen\xE9ricos como "Alternativa A".
+4. No campo 'explanation', detalhe a fundamenta\xE7\xE3o do gabarito oficial com o dispositivo do resumo, explicando a raz\xE3o da alternativa correta e o erro de cada distrator.
+5. No campo 'distractorTrapAnalysis', aponte a armadilha exata da banca examinadora (troca de prazo, invers\xE3o de regra/exce\xE7\xE3o, troca de compet\xEAncia).
+6. RIGOR DE TAXONOMIA (METADADOS EXATOS):
+   - A tag da disciplina (campo "subject") DEVE derivar obrigatoriamente do diploma legal central da quest\xE3o:
+     \u2022 Quest\xF5es sobre o C\xF3digo Penal (DL 2.848/1940) ou tipos penais DEVEM ser classificadas estritamente como 'Direito Penal'.
+     \u2022 \xC9 TERMINANTEMENTE PROIBIDO utilizar a tag 'Direito da Crian\xE7a e do Adolescente' a menos que a quest\xE3o exija conhecimento espec\xEDfico do Estatuto da Crian\xE7a e do Adolescente - ECA (Lei 8.069/1990).
+     \u2022 N\xC3O deduza disciplinas por aproxima\xE7\xE3o tem\xE1tica! Se um crime contra menor estiver tipificado no C\xF3digo Penal (ex: Art. 121, Art. 217-A), a disciplina \xC9 ESTRITAMENTE 'Direito Penal'.
+     \u2022 Quest\xF5es da CF/88: 'Direito Constitucional'; CPP: 'Direito Processual Penal'; Leis Administrativas: 'Direito Administrativo'.
+7. INTEGRIDADE DE SA\xCDDA ESTRUTURADA (PROIBI\xC7\xC3O TOTAL DE TEXTO CORTADO/TRUNCADO):
+   - Entregue o texto das alternativas (A a E) e dos enunciados de forma 100% COMPLETA, autocontida e respeitando a estrutura do JSON.
+   - \xC9 terminantemente proibido cortar frases no meio, deixar retic\xEAncias soltas, terminar com v\xEDrgula ou conectores \xF3rf\xE3os, ou truncar alternativas.
+   - Cada alternativa deve ser uma ora\xE7\xE3o completa, bem desenvolvida e encerrada com ponto final ('.').
+8. VIG\xCANCIA E ATUALIZA\xC7\xC3O NORMATIVA / JURISPRUDENCIAL (2026):
+   - Todas as quest\xF5es e fundamenta\xE7\xF5es DEVEM refletir rigorosamente o direito positivo brasileiro vigente em 2026.
+   - \xC9 proibido cobrar dispositivos revogados, reda\xE7\xF5es anteriores a reformas legislativas (Pacote Anticrime, Lei 14.133, Lei 14.230 de Improbidade, Lei Henry Borel) ou s\xFAmulas/teses superadas do STF/STJ.
+9. REGRA DE ALTERN\xC2NCIA DE TIPOLOGIA DA COBRAN\xC7A:
+   - Alterne obrigatoriamente a tipologia da cobran\xE7a entre as quest\xF5es do lote: 'case_study' (situa\xE7\xE3o hipot\xE9tica), 'direct' (literalidade da lei seca) e 'jurisprudence' (jurisprud\xEAncia consolidada/s\xFAmulas).
+   - Preencha no campo "styleCategory": "case_study", "direct" ou "jurisprudence".
+10. PROIBI\xC7\xC3O ABSOLUTA DE METACONTE\xDADO / RECURSOS MNEM\xD4NICOS:
+   - \xC9 TERMINANTEMENTE PROIBIDO criar quest\xF5es, enunciados ou alternativas sobre recursos did\xE1ticos do material, tais como "mnem\xF4nico", "mapa t\xE1tico", "esquematiza\xE7\xE3o t\xE1tica", "resumo", "tabela", "alerta de estudo" ou siglas mnem\xF4nicas (como CON-EXI, PAS-SOL, etc.).
+   - As bancas examinadoras de concurso cobram a NORMA JUR\xCDDICA, os tipos legais, os requisitos e a jurisprud\xEAncia, NUNCA o m\xE9todo de memoriza\xE7\xE3o! Se o texto contiver um mnem\xF4nico ou dica did\xE1tica, abstraia a regra legal substantiva subjacente e elabore a quest\xE3o como uma aut\xEAntica quest\xE3o de prova sobre a conduta t\xEDpica ou o preceito legal.`;
       const prompt = `ATEN\xC7\xC3O CR\xCDTICA DE COBERTURA INTEGRAL DO CONTE\xDADO:
 O resumo de estudo fornecido possui m\xFAltiplas p\xE1ginas e t\xF3picos essenciais do in\xEDcio ao fim.
 \xC9 TERMINANTEMENTE PROIBIDO concentrar quest\xF5es em apenas 1 ou 2 temas favoritos (como focar repetidamente apenas em Nacionalidade ou apenas em Rem\xE9dios Constitucionais) e ignorar o restante do documento!
@@ -3405,7 +3842,7 @@ ${chunkFormattedSectionsText}`;
         },
         subject: {
           type: Type.STRING,
-          description: "Mat\xE9ria jur\xEDdica ou tema correspondente"
+          description: 'Disciplina estrita derivada do diploma legal central (ex: "Direito Penal" para C\xF3digo Penal, "Direito Constitucional" para CF/88). PROIBIDO usar "Direito da Crian\xE7a e do Adolescente" a menos que exija conhecimento espec\xEDfico da Lei 8.069/90 (ECA).'
         },
         documentZoneCovered: {
           type: Type.STRING,
@@ -3445,7 +3882,7 @@ ${chunkFormattedSectionsText}`;
         },
         styleCategory: {
           type: Type.STRING,
-          description: "case_study ou direct"
+          description: "case_study (estudo de caso / situa\xE7\xE3o f\xE1tica), direct (literalidade da lei seca) ou jurisprudence (jurisprud\xEAncia / s\xFAmula)"
         },
         sourceLawRef: {
           type: Type.STRING,
@@ -3465,7 +3902,9 @@ ${chunkFormattedSectionsText}`;
             contents: prompt,
             config: {
               systemInstruction,
-              temperature: 0.5,
+              temperature: 0.3,
+              maxOutputTokens: 16384,
+              thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM },
               responseMimeType: "application/json",
               responseSchema: {
                 type: Type.ARRAY,
@@ -3479,7 +3918,7 @@ ${chunkFormattedSectionsText}`;
             }
           },
           ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"],
-          6e4,
+          65e3,
           12e4
         );
         rawResponseText = response.text ? response.text.trim() : "[]";
@@ -3495,11 +3934,13 @@ ${chunkFormattedSectionsText}`;
 Retorne o resultado EXCLUSIVAMENTE em formato JSON (array de objetos com type, subject, questionText, options: [{id, text}], correctAnswer, explanation, difficulty, examBoardRef).`,
             config: {
               systemInstruction,
-              temperature: 0.65
+              temperature: 0.35,
+              maxOutputTokens: 16384,
+              thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM }
             }
           },
-          ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.8-flash"],
-          5e4,
+          ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"],
+          6e4,
           11e4
         );
         rawResponseText = relaxed.text ? relaxed.text.trim() : "[]";
@@ -3529,6 +3970,7 @@ Retorne o resultado EXCLUSIVAMENTE em formato JSON (array de objetos com type, s
       }
       if (!Array.isArray(parsed)) parsed = [];
       const normalizeTextForComparison = (str) => (str || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "").trim();
+      const cleanNormForComparison = (str) => normalizeTextForComparison(str).replace(/^(?:nos\s+termos\s+d[ao]|de\s+acordo\s+com|no\s+tocante\s+a[o]?|no\s+que\s+concerne\s+a[o]?|em\s+conformidade\s+com|acerca\s+d[eo]|em\s+rela[cç][aã]o\s+a[o]?|conforme|segundo|no\s+que\s+tange|julgue\s+o\s+item|assinale\s+a\s+op[cç][aã]o|assinale\s+a\s+afirmativa\s+correta|assinale\s+a\s+alternativa\s+correta|com\s+base\s+n[ao]|considerando)[^,:\.\n]*[,:\.\-–]\s*/gi, "").replace(/[^a-z0-9]/g, "");
       const existingNormalized = (db.questions || []).map((q) => normalizeTextForComparison(q.questionText));
       const seenBatch = /* @__PURE__ */ new Set();
       const validQuestions = [];
@@ -3538,11 +3980,13 @@ Retorne o resultado EXCLUSIVAMENTE em formato JSON (array de objetos com type, s
         const norm = normalizeTextForComparison(q.questionText);
         if (norm.length < 15) continue;
         if (seenBatch.has(norm)) continue;
+        const cleanCurrent = cleanNormForComparison(q.questionText);
         const isDuplicateInDb = (db.questions || []).some((ex) => {
           if (!ex || !ex.questionText) return false;
           const exNorm = normalizeTextForComparison(ex.questionText);
           if (exNorm === norm) return true;
-          if (norm.length > 50 && exNorm.length > 50 && norm.slice(0, 100) === exNorm.slice(0, 100)) {
+          const exClean = cleanNormForComparison(ex.questionText);
+          if (cleanCurrent.length > 40 && exClean.length > 40 && cleanCurrent.slice(0, 100) === exClean.slice(0, 100)) {
             return true;
           }
           return false;
@@ -3550,6 +3994,14 @@ Retorne o resultado EXCLUSIVAMENTE em formato JSON (array de objetos com type, s
         if (isDuplicateInDb) continue;
         seenBatch.add(norm);
         validQuestions.push(q);
+      }
+      if (validQuestions.length < chunkCount) {
+        for (const cand of parsed) {
+          if (cand && cand.questionText && !validQuestions.includes(cand)) {
+            validQuestions.push(cand);
+            if (validQuestions.length >= chunkCount) break;
+          }
+        }
       }
       const acceptedList = validQuestions.length > 0 ? validQuestions : parsed;
       const formattedChunkQuestions = acceptedList.map((q, i) => {
@@ -3582,28 +4034,16 @@ Retorne o resultado EXCLUSIVAMENTE em formato JSON (array de objetos com type, s
             finalCorrectAnswer = isCorr ? "True" : "False";
           } else {
             const validOpts = [];
-            const contextualDistractors = [
-              `No \xE2mbito de ${chunkSubject}, tal preceito possui aplica\xE7\xE3o facultativa dispensando formaliza\xE7\xE3o espec\xEDfica.`,
-              `A compet\xEAncia para os atos pertinentes a ${chunkSubject} \xE9 privativa da chefia superior, indeleg\xE1vel a subordinados.`,
-              `O descumprimento das formalidades procedimentais acarreta a nulidade de pleno direito do ato correspondente.`,
-              `A efic\xE1cia da medida fica sujeita a ratifica\xE7\xE3o expressa pelo \xF3rg\xE3o de assessoramento legal.`,
-              `As veda\xE7\xF5es legais aplicam-se exclusivamente quando houver dolo manifesto ou preju\xEDzo direto comprovado.`
-            ];
+            const contextualDistractors = getSubjectSpecificDistractors(chunkSubject, chunkTitle);
             for (let optIdx = 0; optIdx < 5; optIdx++) {
               const letter = ["A", "B", "C", "D", "E"][optIdx];
               const rawItem = rawOptions[optIdx];
               const rawText = typeof rawItem === "string" ? rawItem : rawItem?.text || "";
-              if (rawText && rawText.trim().length > 3 && !rawText.toLowerCase().startsWith("alternativa ")) {
-                validOpts.push({
-                  id: letter,
-                  text: rawText.trim()
-                });
-              } else {
-                validOpts.push({
-                  id: letter,
-                  text: contextualDistractors[optIdx] || `Previs\xE3o normativa sujeita a regulamenta\xE7\xE3o pr\xF3pria da mat\xE9ria.`
-                });
-              }
+              const fallback = contextualDistractors[optIdx] || contextualDistractors[0] || `Previs\xE3o normativa sujeita a regulamenta\xE7\xE3o pr\xF3pria da mat\xE9ria.`;
+              validOpts.push({
+                id: letter,
+                text: sanitizeStructuredOptionText(rawText, fallback)
+              });
             }
             cleanOptions = validOpts;
             const upper = rawAns.toUpperCase();
@@ -3647,9 +4087,22 @@ Retorne o resultado EXCLUSIVAMENTE em formato JSON (array de objetos com type, s
             itemSubj = matched.subject || itemSubj;
           }
         }
-        let finalQuestionText = (q.questionText || "").trim();
+        let finalQuestionText = sanitizeStructuredQuestionText(cleanContent(q.questionText || ""), itemTitle);
         if (qType === "true_false") {
           finalQuestionText = formatTrueFalseEnunciado(finalQuestionText, itemSubj, itemTitle, q.explanation);
+        }
+        itemSubj = resolveExactSubjectTaxonomy(itemSubj, q.sourceLawRef, finalQuestionText, itemTitle);
+        const rawStyle = String(q.styleCategory || "").toLowerCase();
+        let finalStyle = "case_study";
+        if (rawStyle.includes("jurisprudence") || rawStyle.includes("sumula") || rawStyle.includes("tribunal") || rawStyle.includes("stf") || rawStyle.includes("stj")) {
+          finalStyle = "jurisprudence";
+        } else if (rawStyle.includes("direct") || rawStyle.includes("literal") || rawStyle.includes("lei seca")) {
+          finalStyle = "direct";
+        } else if (rawStyle.includes("case") || rawStyle.includes("estudo") || rawStyle.includes("hipotet")) {
+          finalStyle = "case_study";
+        } else {
+          const typologies = ["case_study", "direct", "jurisprudence"];
+          finalStyle = typologies[i % 3];
         }
         return {
           id: `qst-${Date.now()}-${chunkIdx}-${i}-${Math.random().toString(36).substring(2, 6)}`,
@@ -3663,8 +4116,8 @@ Retorne o resultado EXCLUSIVAMENTE em formato JSON (array de objetos com type, s
           correctAnswer: finalCorrectAnswer,
           explanation: q.explanation || "Gabarito fundamentado nas disposi\xE7\xF5es do resumo.",
           difficulty: itemDifficulty,
-          examBoardRef: isTF ? q.examBoardRef && q.examBoardRef.toUpperCase().includes("CEBRASPE") ? q.examBoardRef : "Padr\xE3o Cebraspe - Julgamento de Assertiva" : !isCebraspeSelected && !isMixedBoard ? `Padr\xE3o ${boardKey} - ${q.styleCategory === "case_study" ? "Estudo de Caso" : "Rigor T\xE9cnico"}` : q.examBoardRef || `Padr\xE3o ${boardKey || "Misto"}`,
-          styleCategory: q.styleCategory === "case_study" || q.styleCategory === "direct" ? q.styleCategory : finalQuestionText.length > 220 ? "case_study" : "direct",
+          examBoardRef: isTF ? q.examBoardRef && q.examBoardRef.toUpperCase().includes("CEBRASPE") ? q.examBoardRef : "Padr\xE3o Cebraspe - Julgamento de Assertiva" : !isCebraspeSelected && !isMixedBoard ? `Padr\xE3o ${boardKey} - ${finalStyle === "case_study" ? "Estudo de Caso" : finalStyle === "jurisprudence" ? "Jurisprud\xEAncia" : "Literalidade"}` : q.examBoardRef || `Padr\xE3o ${boardKey || "Misto"}`,
+          styleCategory: finalStyle,
           sourceLawRef: q.sourceLawRef || void 0,
           distractorTrapAnalysis: q.distractorTrapAnalysis || void 0,
           attempts: 0,
@@ -3683,7 +4136,7 @@ Retorne o resultado EXCLUSIVAMENTE em formato JSON (array de objetos com type, s
               userId: db.users[0]?.id || "usr-default-01",
               materialId: mat.id,
               sourceSummaryTitle: mat.title,
-              subject: mat.subject || q.subject,
+              subject: resolveExactSubjectTaxonomy(mat.subject || q.subject, q.sourceLawRef, q.questionText, mat.title),
               questionText: q.type === "true_false" ? formatTrueFalseEnunciado(q.questionText, mat.subject, mat.title) : q.questionText,
               attempts: 0,
               correctAttempts: 0,
@@ -3708,6 +4161,7 @@ Retorne o resultado EXCLUSIVAMENTE em formato JSON (array de objetos com type, s
         questionType: effectiveQType2,
         difficulty: normalizedDifficulty2,
         materialId: primaryMaterialId,
+        customSourceUrl: String(customSourceUrl || req.body?.customSourceUrl || ""),
         existingSnippets: mergedExistingSnippets,
         existingQuestionsList: existingForContext
       });
@@ -3727,16 +4181,36 @@ Retorne o resultado EXCLUSIVAMENTE em formato JSON (array de objetos com type, s
     } else if (!isGeneralSimulado && questionCount > 5) {
       const rawDocText = targetSummaries[0]?.summaryText || targetSummaries[0]?.sampleText || targetSummaries[0]?.title || "";
       const allSlices = partitionDocumentAcrossBreadth(rawDocText, questionCount, existingForContext.length);
-      console.log(`[Questions Service] Gerando ${questionCount} quest\xF5es para "${sourceSummaryTitle}" em chamada estruturada \xFAnica cobrindo ${allSlices.length} zonas (100% da extens\xE3o da lei)...`);
-      allGeneratedQuestions = await generateQuestionsForChunk(
-        targetSummaries,
-        false,
-        0,
-        questionCount,
-        `Varredura estrutural de 100% do diploma legal: Elabore rigorosamente ${questionCount} quest\xF5es in\xE9ditas, gerando exatamente 1 quest\xE3o para cada uma das ${allSlices.length} Zonas demarcadas abaixo, cobrindo todo o diploma do in\xEDcio ao fim sem sobreposi\xE7\xE3o.`,
-        allSlices,
-        existingForContext
-      );
+      const batchSize = 5;
+      const subBatches = [];
+      for (let b = 0; b < allSlices.length; b += batchSize) {
+        const batchSlices = allSlices.slice(b, b + batchSize);
+        const startPct = Math.round(b / allSlices.length * 100);
+        const endPct = Math.round((b + batchSlices.length) / allSlices.length * 100);
+        const focusLabel = `Lote #${Math.floor(b / batchSize) + 1} (${startPct}% a ${endPct}% do diploma legal - Zonas #${b + 1} a #${b + batchSlices.length}): Elabore rigorosamente ${batchSlices.length} quest\xF5es in\xE9ditas, 1 para cada Zona deste segmento sequencial, cobrindo com profundidade os artigos e temas deste trecho.`;
+        subBatches.push({ slices: batchSlices, batchIdx: Math.floor(b / batchSize), focus: focusLabel });
+      }
+      console.log(`[Questions Service] Executando ${subBatches.length} sublotes sequenciais com Gemini 3.8 Flash para cobrir 100% da extens\xE3o (${questionCount} quest\xF5es)...`);
+      const batchResults = [];
+      for (const sb of subBatches) {
+        try {
+          const res2 = await generateQuestionsForChunk(
+            targetSummaries,
+            false,
+            sb.batchIdx,
+            sb.slices.length,
+            sb.focus,
+            sb.slices,
+            existingForContext
+          );
+          if (Array.isArray(res2) && res2.length > 0) {
+            batchResults.push(res2);
+          }
+        } catch (subErr) {
+          console.warn(`[Questions Service] Sublote #${sb.batchIdx} falhou temporariamente:`, subErr);
+        }
+      }
+      allGeneratedQuestions = batchResults.flat();
     } else {
       let singleSlices = void 0;
       if (!isGeneralSimulado && targetSummaries.length === 1) {
@@ -3755,7 +4229,7 @@ Retorne o resultado EXCLUSIVAMENTE em formato JSON (array de objetos com type, s
     const finalCleanList = [];
     const seenTextsAll = /* @__PURE__ */ new Set();
     const seenIdsAll = /* @__PURE__ */ new Set();
-    const normalizeForFinalDedup = (t) => (t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/^(?:acerca\s+d[eo]|em\s+rela[cç][aã]o\s+a[o]?|conforme|segundo|no\s+que\s+tange|julgue\s+o\s+item|assinale\s+a\s+op[cç][aã]o|com\s+base\s+n[ao]|considerando)\s*/gi, "").replace(/[^a-z0-9]/g, "").slice(0, 90);
+    const normalizeForFinalDedup = (t) => (t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/^(?:nos\s+termos\s+d[ao]|de\s+acordo\s+com|no\s+tocante\s+a[o]?|no\s+que\s+concerne\s+a[o]?|em\s+conformidade\s+com|acerca\s+d[eo]|em\s+rela[cç][aã]o\s+a[o]?|conforme|segundo|no\s+que\s+tange|julgue\s+o\s+item|assinale\s+a\s+op[cç][aã]o|assinale\s+a\s+afirmativa\s+correta|assinale\s+a\s+alternativa\s+correta|com\s+base\s+n[ao]|considerando)[^,:\.\n]*[,:\.\-–]\s*/gi, "").replace(/[^a-z0-9]/g, "").slice(0, 180);
     for (const snip of mergedExistingSnippets) {
       const norm = normalizeForFinalDedup(snip);
       if (norm.length > 15) seenTextsAll.add(norm);
@@ -3781,6 +4255,77 @@ Retorne o resultado EXCLUSIVAMENTE em formato JSON (array de objetos com type, s
         ...q,
         id: safeId
       });
+    }
+    if (!isGeneralSimulado && finalCleanList.length < questionCount) {
+      const neededCount = questionCount - finalCleanList.length;
+      console.log(`[Questions Service] Reabastecendo ${neededCount} quest\xE3o(\xF5es) de alto n\xEDvel para atingir ${questionCount}...`);
+      const bankCandidates = (db.questions || []).filter((bq) => {
+        if (!bq || !bq.questionText) return false;
+        const matchMat = bq.materialId === primaryMaterialId;
+        const matchSubj = (bq.subject || "").toLowerCase() === (primarySubject || "").toLowerCase();
+        if (!matchMat && !matchSubj) return false;
+        const norm = normalizeForFinalDedup(bq.questionText);
+        return norm.length > 15 && !seenTextsAll.has(norm);
+      });
+      if (bankCandidates.length > 0) {
+        const pickedFromBank = bankCandidates.slice(0, neededCount);
+        for (const pq of pickedFromBank) {
+          const norm = normalizeForFinalDedup(pq.questionText);
+          seenTextsAll.add(norm);
+          finalCleanList.push({
+            ...pq,
+            id: `qst-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+            attempts: 0,
+            correctAttempts: 0
+          });
+        }
+      }
+      if (finalCleanList.length < questionCount) {
+        const stillNeeded = questionCount - finalCleanList.length;
+        try {
+          const rawDocText = targetSummaries[0]?.summaryText || targetSummaries[0]?.sampleText || targetSummaries[0]?.title || "";
+          const targetedSlices = partitionDocumentAcrossBreadth(rawDocText, stillNeeded, finalCleanList.length + 5);
+          const aiSupplements = await generateQuestionsForChunk(
+            targetSummaries,
+            false,
+            99,
+            stillNeeded,
+            `Quest\xE3o complementar de alto padr\xE3o examinador (${stillNeeded} item in\xE9dito)`,
+            targetedSlices,
+            finalCleanList
+          );
+          if (Array.isArray(aiSupplements)) {
+            for (const asq of aiSupplements) {
+              const norm = normalizeForFinalDedup(asq.questionText || "");
+              if (norm.length > 15 && !seenTextsAll.has(norm)) {
+                seenTextsAll.add(norm);
+                finalCleanList.push(asq);
+                if (finalCleanList.length >= questionCount) break;
+              }
+            }
+          }
+        } catch (miniErr) {
+          console.warn("[Questions Service] Mini-chamada de reabastecimento por IA falhou:", miniErr);
+        }
+      }
+      if (finalCleanList.length < questionCount) {
+        const stillNeeded = questionCount - finalCleanList.length;
+        const rawDocText = targetSummaries[0]?.summaryText || targetSummaries[0]?.sampleText || targetSummaries[0]?.title || "";
+        const synthReplenish = synthesizeQuestionsFromSummaryText(
+          rawDocText,
+          stillNeeded,
+          primaryMaterialId,
+          sourceSummaryTitle,
+          primarySubject,
+          requestedExamBoard,
+          effectiveQType2,
+          normalizedDifficulty2,
+          finalCleanList.length + 7
+        );
+        for (const sq of synthReplenish) {
+          finalCleanList.push(sq);
+        }
+      }
     }
     allGeneratedQuestions = finalCleanList;
     if (allGeneratedQuestions.length === 0) {
@@ -3836,17 +4381,25 @@ Retorne o resultado EXCLUSIVAMENTE em formato JSON (array de objetos com type, s
           finalCorrectAnswer = "True";
         }
       }
+      if (Array.isArray(finalOptions)) {
+        finalOptions = finalOptions.map((opt) => ({
+          ...opt,
+          text: sanitizeStructuredOptionText(opt?.text || "", "Op\xE7\xE3o em conformidade com as regras do edital.")
+        }));
+      }
+      const exactSubj = resolveExactSubjectTaxonomy(subj || q.subject, q.sourceLawRef, sanitizedQuestionText, title);
       return {
         ...q,
         id: `q-curated-${Date.now()}-${matId}-${idx}`,
         userId: db.users[0]?.id || "usr-default-01",
         materialId: matId,
         sourceSummaryTitle: title,
-        subject: subj,
+        subject: exactSubj,
         type: finalType,
         options: finalOptions,
         correctAnswer: finalCorrectAnswer,
         examBoardRef: finalBoardRef,
+        styleCategory: q.styleCategory || (sanitizedQuestionText.length > 200 ? "case_study" : "direct"),
         questionText: finalType === "true_false" ? formatTrueFalseEnunciado(sanitizedQuestionText, subj, title) : sanitizedQuestionText,
         attempts: 0,
         correctAttempts: 0,
