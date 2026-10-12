@@ -1216,7 +1216,7 @@ function getOrderedModels(models) {
   }
   return [...models].sort((a, b) => (modelCooldowns.get(a) || 0) - (modelCooldowns.get(b) || 0));
 }
-async function generateContentWithRetryAndFallback(ai, requestParams, modelsToTry = ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"], timeoutPerAttemptMs = 45e3, totalGlobalDeadlineMs = 11e4) {
+async function generateContentWithRetryAndFallback(ai, requestParams, modelsToTry = ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"], timeoutPerAttemptMs = 28e3, totalGlobalDeadlineMs = 5e4) {
   let lastError = null;
   const orderedModels = getOrderedModels(modelsToTry);
   const startTime = Date.now();
@@ -1957,12 +1957,12 @@ ${promptText}`
           systemInstruction,
           temperature: 0.15,
           maxOutputTokens: 16384,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM }
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
         }
       },
       ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"],
-      6e4,
-      12e4
+      38e3,
+      52e3
     );
     const generatedText = response.text ? response.text.trim() : "";
     if (!generatedText) {
@@ -2353,12 +2353,12 @@ ${textToProcess}`;
           systemInstruction,
           temperature: 0.15,
           maxOutputTokens: 16384,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM }
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
         }
       },
       ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"],
-      6e4,
-      12e4
+      38e3,
+      52e3
     );
     let cleanHtml = response.text ? response.text.trim() : "";
     if (cleanHtml.startsWith("```html")) {
@@ -3904,7 +3904,7 @@ ${chunkFormattedSectionsText}`;
               systemInstruction,
               temperature: 0.3,
               maxOutputTokens: 16384,
-              thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM },
+              thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
               responseMimeType: "application/json",
               responseSchema: {
                 type: Type.ARRAY,
@@ -3918,8 +3918,8 @@ ${chunkFormattedSectionsText}`;
             }
           },
           ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"],
-          65e3,
-          12e4
+          32e3,
+          5e4
         );
         rawResponseText = response.text ? response.text.trim() : "[]";
       } catch (schemaErr) {
@@ -3936,12 +3936,12 @@ Retorne o resultado EXCLUSIVAMENTE em formato JSON (array de objetos com type, s
               systemInstruction,
               temperature: 0.35,
               maxOutputTokens: 16384,
-              thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM }
+              thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
             }
           },
           ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"],
-          6e4,
-          11e4
+          25e3,
+          48e3
         );
         rawResponseText = relaxed.text ? relaxed.text.trim() : "[]";
       }
@@ -4178,39 +4178,42 @@ Retorne o resultado EXCLUSIVAMENTE em formato JSON (array de objetos com type, s
         (chunk, idx) => generateQuestionsForChunk(chunk, true, idx)
       );
       allGeneratedQuestions = chunkResults.flat();
-    } else if (!isGeneralSimulado && questionCount > 5) {
+    } else if (!isGeneralSimulado && questionCount <= 15) {
       const rawDocText = targetSummaries[0]?.summaryText || targetSummaries[0]?.sampleText || targetSummaries[0]?.title || "";
       const allSlices = partitionDocumentAcrossBreadth(rawDocText, questionCount, existingForContext.length);
-      const batchSize = 5;
-      const subBatches = [];
-      for (let b = 0; b < allSlices.length; b += batchSize) {
-        const batchSlices = allSlices.slice(b, b + batchSize);
-        const startPct = Math.round(b / allSlices.length * 100);
-        const endPct = Math.round((b + batchSlices.length) / allSlices.length * 100);
-        const focusLabel = `Lote #${Math.floor(b / batchSize) + 1} (${startPct}% a ${endPct}% do diploma legal - Zonas #${b + 1} a #${b + batchSlices.length}): Elabore rigorosamente ${batchSlices.length} quest\xF5es in\xE9ditas, 1 para cada Zona deste segmento sequencial, cobrindo com profundidade os artigos e temas deste trecho.`;
-        subBatches.push({ slices: batchSlices, batchIdx: Math.floor(b / batchSize), focus: focusLabel });
-      }
-      console.log(`[Questions Service] Executando ${subBatches.length} sublotes sequenciais com Gemini 3.8 Flash para cobrir 100% da extens\xE3o (${questionCount} quest\xF5es)...`);
-      const batchResults = [];
-      for (const sb of subBatches) {
-        try {
-          const res2 = await generateQuestionsForChunk(
-            targetSummaries,
-            false,
-            sb.batchIdx,
-            sb.slices.length,
-            sb.focus,
-            sb.slices,
-            existingForContext
-          );
-          if (Array.isArray(res2) && res2.length > 0) {
-            batchResults.push(res2);
-          }
-        } catch (subErr) {
-          console.warn(`[Questions Service] Sublote #${sb.batchIdx} falhou temporariamente:`, subErr);
-        }
-      }
-      allGeneratedQuestions = batchResults.flat();
+      console.log(`[Questions Service] Gerando ${questionCount} quest\xF5es com Gemini 3.8 Flash cobrindo ${allSlices.length} zonas do documento...`);
+      allGeneratedQuestions = await generateQuestionsForChunk(
+        targetSummaries,
+        false,
+        0,
+        questionCount,
+        void 0,
+        allSlices,
+        existingForContext
+      );
+    } else if (!isGeneralSimulado && questionCount > 15) {
+      const rawDocText = targetSummaries[0]?.summaryText || targetSummaries[0]?.sampleText || targetSummaries[0]?.title || "";
+      const allSlices = partitionDocumentAcrossBreadth(rawDocText, questionCount, existingForContext.length);
+      const half = Math.ceil(allSlices.length / 2);
+      const subBatches = [
+        { slices: allSlices.slice(0, half), batchIdx: 0, focus: `Lote #1 (1 a ${half} de ${allSlices.length} zonas)` },
+        { slices: allSlices.slice(half), batchIdx: 1, focus: `Lote #2 (${half + 1} a ${allSlices.length} de ${allSlices.length} zonas)` }
+      ];
+      console.log(`[Questions Service] Executando 2 sublotes concorrentes para ${questionCount} quest\xF5es...`);
+      const chunkResults = await runWithConcurrency(
+        subBatches,
+        2,
+        (sb) => generateQuestionsForChunk(
+          targetSummaries,
+          false,
+          sb.batchIdx,
+          sb.slices.length,
+          sb.focus,
+          sb.slices,
+          existingForContext
+        )
+      );
+      allGeneratedQuestions = chunkResults.flat();
     } else {
       let singleSlices = void 0;
       if (!isGeneralSimulado && targetSummaries.length === 1) {
@@ -4621,12 +4624,16 @@ if (typeof globalThis.Path2D === "undefined") {
   globalThis.Path2D = class Path2D {
   };
 }
-if (typeof process !== "undefined" && typeof process.on === "function") {
-  process.on("warning", (warning) => {
-    if (warning.name === "DeprecationWarning" && warning.message.includes("url.parse")) {
-      return;
-    }
-  });
+if (typeof process !== "undefined") {
+  if (typeof process.removeAllListeners === "function") {
+    process.removeAllListeners("warning");
+  }
+  if (typeof process.on === "function") {
+    process.on("warning", (warning) => {
+      if (warning?.name === "DeprecationWarning") return;
+      console.warn(warning?.name, warning?.message);
+    });
+  }
 }
 var config = {
   maxDuration: 60,

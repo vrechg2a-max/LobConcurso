@@ -13,12 +13,16 @@ if (typeof globalThis.Path2D === 'undefined') {
 }
 
 // Suppress benign Node.js deprecation warnings (e.g. url.parse) that write to stderr and trigger false "[error]" tags in Vercel logs
-if (typeof process !== 'undefined' && typeof process.on === 'function') {
-  process.on('warning', (warning) => {
-    if (warning.name === 'DeprecationWarning' && warning.message.includes('url.parse')) {
-      return; // Ignore Express internal url.parse deprecation
-    }
-  });
+if (typeof process !== 'undefined') {
+  if (typeof (process as any).removeAllListeners === 'function') {
+    (process as any).removeAllListeners('warning');
+  }
+  if (typeof process.on === 'function') {
+    process.on('warning', (warning: any) => {
+      if (warning?.name === 'DeprecationWarning') return;
+      console.warn(warning?.name, warning?.message);
+    });
+  }
 }
 
 import { app } from '../server';

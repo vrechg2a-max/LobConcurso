@@ -1553,8 +1553,8 @@ async function generateContentWithRetryAndFallback(
     config?: any;
   },
   modelsToTry = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'],
-  timeoutPerAttemptMs = 45000,
-  totalGlobalDeadlineMs = 110000
+  timeoutPerAttemptMs = 28000,
+  totalGlobalDeadlineMs = 50000
 ) {
   let lastError: any = null;
   const orderedModels = getOrderedModels(modelsToTry);
@@ -2438,12 +2438,12 @@ Retorne APENAS o código HTML válido e completo (com <!DOCTYPE html>, <html>, <
           systemInstruction,
           temperature: 0.15,
           maxOutputTokens: 16384,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM },
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
         },
       },
       ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'],
-      60000,
-      120000
+      38000,
+      52000
     );
 
     const generatedText = response.text ? response.text.trim() : '';
@@ -2904,12 +2904,12 @@ ${textToProcess}`;
           systemInstruction,
           temperature: 0.15,
           maxOutputTokens: 16384,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM },
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
         },
       },
       ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'],
-      60000,
-      120000
+      38000,
+      52000
     );
 
     let cleanHtml = response.text ? response.text.trim() : '';
@@ -4970,7 +4970,7 @@ ${chunkFormattedSectionsText}`;
               systemInstruction,
               temperature: 0.3,
               maxOutputTokens: 16384,
-              thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM },
+              thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
               responseMimeType: 'application/json',
               responseSchema: {
                 type: Type.ARRAY,
@@ -4984,8 +4984,8 @@ ${chunkFormattedSectionsText}`;
             },
           },
           ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'],
-          65000,
-          120000
+          32000,
+          50000
         );
         rawResponseText = response.text ? response.text.trim() : '[]';
       } catch (schemaErr: any) {
@@ -5008,12 +5008,12 @@ ${chunkFormattedSectionsText}`;
               systemInstruction,
               temperature: 0.35,
               maxOutputTokens: 16384,
-              thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM },
+              thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
             },
           },
           ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'],
-          60000,
-          110000
+          25000,
+          48000
         );
         rawResponseText = relaxed.text ? relaxed.text.trim() : '[]';
       }
@@ -5327,46 +5327,48 @@ ${chunkFormattedSectionsText}`;
       );
 
       allGeneratedQuestions = chunkResults.flat();
-    } else if (!isGeneralSimulado && questionCount > 5) {
-      // Single material with 10 or 15 items requested:
-      // Divide into structured sub-batches of 5 questions each to guarantee 100% breadth, zero timeout, and zero truncation!
+    } else if (!isGeneralSimulado && questionCount <= 15) {
+      // Single material with up to 15 items:
+      // Execute in a single fast, unified call with Gemini 3.8 Flash across all partitioned zones
+      // This finishes in ~12 to 18 seconds, well within Vercel's 60-second limit!
       const rawDocText = targetSummaries[0]?.summaryText || targetSummaries[0]?.sampleText || targetSummaries[0]?.title || '';
       const allSlices = partitionDocumentAcrossBreadth(rawDocText, questionCount, existingForContext.length);
 
-      const batchSize = 5;
-      const subBatches: Array<{ slices: DocumentSlice[]; batchIdx: number; focus: string }> = [];
+      console.log(`[Questions Service] Gerando ${questionCount} questões com Gemini 3.8 Flash cobrindo ${allSlices.length} zonas do documento...`);
 
-      for (let b = 0; b < allSlices.length; b += batchSize) {
-        const batchSlices = allSlices.slice(b, b + batchSize);
-        const startPct = Math.round((b / allSlices.length) * 100);
-        const endPct = Math.round(((b + batchSlices.length) / allSlices.length) * 100);
-        const focusLabel = `Lote #${Math.floor(b / batchSize) + 1} (${startPct}% a ${endPct}% do diploma legal - Zonas #${b + 1} a #${b + batchSlices.length}): Elabore rigorosamente ${batchSlices.length} questões inéditas, 1 para cada Zona deste segmento sequencial, cobrindo com profundidade os artigos e temas deste trecho.`;
-        subBatches.push({ slices: batchSlices, batchIdx: Math.floor(b / batchSize), focus: focusLabel });
-      }
+      allGeneratedQuestions = await generateQuestionsForChunk(
+        targetSummaries,
+        false,
+        0,
+        questionCount,
+        undefined,
+        allSlices,
+        existingForContext
+      );
+    } else if (!isGeneralSimulado && questionCount > 15) {
+      // For large batches (>15 questions), divide into 2 concurrent sub-batches to prevent timeouts
+      const rawDocText = targetSummaries[0]?.summaryText || targetSummaries[0]?.sampleText || targetSummaries[0]?.title || '';
+      const allSlices = partitionDocumentAcrossBreadth(rawDocText, questionCount, existingForContext.length);
 
-      console.log(`[Questions Service] Executando ${subBatches.length} sublotes sequenciais com Gemini 3.8 Flash para cobrir 100% da extensão (${questionCount} questões)...`);
+      const half = Math.ceil(allSlices.length / 2);
+      const subBatches = [
+        { slices: allSlices.slice(0, half), batchIdx: 0, focus: `Lote #1 (1 a ${half} de ${allSlices.length} zonas)` },
+        { slices: allSlices.slice(half), batchIdx: 1, focus: `Lote #2 (${half + 1} a ${allSlices.length} de ${allSlices.length} zonas)` },
+      ];
 
-      const batchResults: any[][] = [];
-      for (const sb of subBatches) {
-        try {
-          const res = await generateQuestionsForChunk(
-            targetSummaries,
-            false,
-            sb.batchIdx,
-            sb.slices.length,
-            sb.focus,
-            sb.slices,
-            existingForContext
-          );
-          if (Array.isArray(res) && res.length > 0) {
-            batchResults.push(res);
-          }
-        } catch (subErr) {
-          console.warn(`[Questions Service] Sublote #${sb.batchIdx} falhou temporariamente:`, subErr);
-        }
-      }
-
-      allGeneratedQuestions = batchResults.flat();
+      console.log(`[Questions Service] Executando 2 sublotes concorrentes para ${questionCount} questões...`);
+      const chunkResults = await runWithConcurrency(subBatches, 2, (sb) =>
+        generateQuestionsForChunk(
+          targetSummaries,
+          false,
+          sb.batchIdx,
+          sb.slices.length,
+          sb.focus,
+          sb.slices,
+          existingForContext
+        )
+      );
+      allGeneratedQuestions = chunkResults.flat();
     } else {
       // Single material or small multi-material set with <= 5 items
       let singleSlices: DocumentSlice[] | undefined = undefined;
