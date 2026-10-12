@@ -1216,7 +1216,7 @@ function getOrderedModels(models) {
   }
   return [...models].sort((a, b) => (modelCooldowns.get(a) || 0) - (modelCooldowns.get(b) || 0));
 }
-async function generateContentWithRetryAndFallback(ai, requestParams, modelsToTry = ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"], timeoutPerAttemptMs = 28e3, totalGlobalDeadlineMs = 5e4) {
+async function generateContentWithRetryAndFallback(ai, requestParams, modelsToTry = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-3.1-flash-lite"], timeoutPerAttemptMs = 2e4, totalGlobalDeadlineMs = 45e3) {
   let lastError = null;
   const orderedModels = getOrderedModels(modelsToTry);
   const startTime = Date.now();
@@ -1224,7 +1224,7 @@ async function generateContentWithRetryAndFallback(ai, requestParams, modelsToTr
     const model = orderedModels[modelIdx];
     const hasAlternativeModel = modelIdx < orderedModels.length - 1;
     const timeRemainingGlobal = totalGlobalDeadlineMs - (Date.now() - startTime);
-    if (timeRemainingGlobal < 4500) {
+    if (timeRemainingGlobal < 3500) {
       console.warn(`[AI Budget] Global deadline approaching (${Math.round(timeRemainingGlobal)}ms remaining). Exiting model cascade.`);
       break;
     }
@@ -1236,11 +1236,11 @@ async function generateContentWithRetryAndFallback(ai, requestParams, modelsToTr
         thinkingLevel: model === "gemini-3.1-flash-lite" ? ThinkingLevel.MINIMAL : ThinkingLevel.LOW
       };
     }
-    const maxAttemptsForModel = model === "gemini-3.8-flash" ? 3 : hasAlternativeModel ? 1 : 2;
+    const maxAttemptsForModel = hasAlternativeModel ? 1 : 2;
     for (let attempt = 1; attempt <= maxAttemptsForModel; attempt++) {
       const remainingNow = totalGlobalDeadlineMs - (Date.now() - startTime);
-      if (remainingNow < 4e3) break;
-      const effectiveTimeout = Math.min(timeoutPerAttemptMs, Math.max(4e3, remainingNow - 500));
+      if (remainingNow < 3e3) break;
+      const effectiveTimeout = Math.min(timeoutPerAttemptMs, Math.max(3e3, remainingNow - 500));
       try {
         console.log(
           `[AI] Generating content with model: ${model} (attempt ${attempt}/${maxAttemptsForModel}, timeout: ${Math.round(
@@ -1292,29 +1292,35 @@ async function generateContentWithRetryAndFallback(ai, requestParams, modelsToTr
         );
         if (isQuotaExhausted) {
           setModelCooldown(model, 2 * 60 * 1e3);
-          if (attempt < maxAttemptsForModel && !hasAlternativeModel) {
-            const backoffMs = Math.min(6e3, 3e3 * attempt);
-            console.log(`[AI Quota Backoff] Waiting ${backoffMs / 1e3}s before retry on ${model}...`);
-            await new Promise((r) => setTimeout(r, backoffMs));
+          if (hasAlternativeModel) {
+            console.log(`[AI Quota] Model ${model} quota exhausted. Switching immediately to alternative model in cascade...`);
+            break;
+          }
+          if (attempt < maxAttemptsForModel) {
+            await new Promise((r) => setTimeout(r, 2e3));
             continue;
           }
           break;
         } else if (isUnavailable) {
+          setModelCooldown(model, 60 * 1e3);
+          if (hasAlternativeModel) {
+            console.log(`[AI 503 Spike] Model ${model} is experiencing high demand. Switching immediately to alternative model in cascade...`);
+            break;
+          }
           if (attempt < maxAttemptsForModel) {
-            const backoffMs = Math.min(4e3, 1500 * attempt);
-            console.log(`[AI 503 Spike] Waiting ${backoffMs / 1e3}s before retry ${attempt + 1}/${maxAttemptsForModel} on ${model}...`);
-            await new Promise((r) => setTimeout(r, backoffMs));
+            await new Promise((r) => setTimeout(r, 1500));
             continue;
           }
-          setModelCooldown(model, 30 * 1e3);
           break;
         } else if (isTimeout) {
-          if (attempt < maxAttemptsForModel) {
-            console.log(`[AI Timeout] Retrying ${model} with fresh timeout window...`);
-            continue;
+          setModelCooldown(model, 45 * 1e3);
+          if (hasAlternativeModel) {
+            console.log(`[AI Timeout] Model ${model} timed out. Switching immediately to alternative model in cascade...`);
+            break;
           }
           break;
         } else {
+          setModelCooldown(model, 30 * 1e3);
           break;
         }
       }
@@ -1391,9 +1397,9 @@ DIRETRIZES FUNDAMENTAIS (RIGOR CONTRA PROLIXIDADE):
           temperature: 0.5
         }
       },
-      ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"],
-      35e3,
-      6e4
+      ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-3.1-flash-lite"],
+      18e3,
+      35e3
     );
     const reply = aiResponse.text?.trim() || "Ol\xE1! Como posso te ajudar na sua prepara\xE7\xE3o para o concurso hoje?";
     res.json({
@@ -1531,7 +1537,7 @@ app.post("/api/extract-pdf-text", async (req, res) => {
               }
             ]
           },
-          ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"]
+          ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-3.1-flash-lite"]
         );
         const geminiText = geminiRes.text?.trim();
         if (geminiText && geminiText.length > extractedText.length) {
@@ -1960,9 +1966,9 @@ ${promptText}`
           thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
         }
       },
-      ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"],
-      38e3,
-      52e3
+      ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-3.1-flash-lite"],
+      25e3,
+      48e3
     );
     const generatedText = response.text ? response.text.trim() : "";
     if (!generatedText) {
@@ -2356,9 +2362,9 @@ ${textToProcess}`;
           thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
         }
       },
-      ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"],
-      38e3,
-      52e3
+      ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-3.1-flash-lite"],
+      25e3,
+      48e3
     );
     let cleanHtml = response.text ? response.text.trim() : "";
     if (cleanHtml.startsWith("```html")) {
@@ -3441,9 +3447,9 @@ Retorne EXCLUSIVAMENTE em formato JSON (bloco json) com a lista de objetos:
           const aiResp = await generateContentWithRetryAndFallback(
             ai2,
             { contents: extractionPrompt, config: { temperature: 0.4 } },
-            ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"],
-            4e4,
-            75e3
+            ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-3.1-flash-lite"],
+            2e4,
+            4e4
           );
           rawResponse = aiResp.text || "";
         } catch (fbErr) {
@@ -3539,9 +3545,9 @@ Retorne EXCLUSIVAMENTE em formato JSON:
           const suppResp = await generateContentWithRetryAndFallback(
             ai2,
             { contents: supplementPrompt, config: { temperature: 0.7 } },
-            ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"],
-            25e3,
-            45e3
+            ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-3.1-flash-lite"],
+            15e3,
+            3e4
           );
           let suppJson = (suppResp.text || "").trim();
           if (suppJson.includes("```json")) suppJson = suppJson.split("```json")[1].split("```")[0].trim();
@@ -3917,9 +3923,9 @@ ${chunkFormattedSectionsText}`;
               }
             }
           },
-          ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"],
-          32e3,
-          5e4
+          ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-3.1-flash-lite"],
+          22e3,
+          45e3
         );
         rawResponseText = response.text ? response.text.trim() : "[]";
       } catch (schemaErr) {
@@ -3939,9 +3945,9 @@ Retorne o resultado EXCLUSIVAMENTE em formato JSON (array de objetos com type, s
               thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
             }
           },
-          ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"],
-          25e3,
-          48e3
+          ["gemini-2.5-flash", "gemini-3.1-flash-lite"],
+          16e3,
+          25e3
         );
         rawResponseText = relaxed.text ? relaxed.text.trim() : "[]";
       }

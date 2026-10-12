@@ -1545,16 +1545,16 @@ function getOrderedModels(models: string[]): string[] {
 }
 
 // Robust multi-model generator with global request budget, automatic retry, timeout protection, dynamic cooldown and fast fallback
-// Default priority: gemini-3.8-flash (primary high-intelligence reasoning model) -> gemini-flash-latest -> gemini-3.1-flash-lite (fast safety fallback)
+// Priority: gemini-3.8-flash (primary high-intelligence) -> gemini-2.5-flash (high capacity & ultra-stable) -> gemini-3.1-flash-lite (fast safety fallback)
 async function generateContentWithRetryAndFallback(
   ai: GoogleGenAI,
   requestParams: {
     contents: any;
     config?: any;
   },
-  modelsToTry = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'],
-  timeoutPerAttemptMs = 28000,
-  totalGlobalDeadlineMs = 50000
+  modelsToTry = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-3.1-flash-lite'],
+  timeoutPerAttemptMs = 20000,
+  totalGlobalDeadlineMs = 45000
 ) {
   let lastError: any = null;
   const orderedModels = getOrderedModels(modelsToTry);
@@ -1566,7 +1566,7 @@ async function generateContentWithRetryAndFallback(
 
     // Check if total deadline has expired
     const timeRemainingGlobal = totalGlobalDeadlineMs - (Date.now() - startTime);
-    if (timeRemainingGlobal < 4500) {
+    if (timeRemainingGlobal < 3500) {
       console.warn(`[AI Budget] Global deadline approaching (${Math.round(timeRemainingGlobal)}ms remaining). Exiting model cascade.`);
       break;
     }
@@ -1576,20 +1576,21 @@ async function generateContentWithRetryAndFallback(
     if (!model.startsWith('gemini-3')) {
       delete modelConfig.thinkingConfig;
     } else if (!modelConfig.thinkingConfig) {
-      // Default to LOW for gemini-3.8-flash for high quality reasoning, and MINIMAL for flash-lite
+      // Default to LOW for gemini-3.8-flash for fast high quality reasoning, and MINIMAL for flash-lite
       modelConfig.thinkingConfig = {
         thinkingLevel: model === 'gemini-3.1-flash-lite' ? ThinkingLevel.MINIMAL : ThinkingLevel.LOW,
       };
     }
 
-    // Primary model (gemini-3.8-flash) gets 3 attempts with brief backoff to overcome momentary 503 load spikes
-    const maxAttemptsForModel = model === 'gemini-3.8-flash' ? 3 : (hasAlternativeModel ? 1 : 2);
+    // When an alternative model is available, never stubbornly retry an overloaded/timing-out model.
+    // 1 single attempt, and if 503 or timeout occurs, immediately cascade to the next model!
+    const maxAttemptsForModel = hasAlternativeModel ? 1 : 2;
 
     for (let attempt = 1; attempt <= maxAttemptsForModel; attempt++) {
       const remainingNow = totalGlobalDeadlineMs - (Date.now() - startTime);
-      if (remainingNow < 4000) break;
+      if (remainingNow < 3000) break;
 
-      const effectiveTimeout = Math.min(timeoutPerAttemptMs, Math.max(4000, remainingNow - 500));
+      const effectiveTimeout = Math.min(timeoutPerAttemptMs, Math.max(3000, remainingNow - 500));
 
       try {
         console.log(
@@ -1666,32 +1667,37 @@ async function generateContentWithRetryAndFallback(
         if (isQuotaExhausted) {
           // Cooldown 2 minutes for quota exhaustion on this specific model
           setModelCooldown(model, 2 * 60 * 1000);
-          if (attempt < maxAttemptsForModel && !hasAlternativeModel) {
-            const backoffMs = Math.min(6000, 3000 * attempt);
-            console.log(`[AI Quota Backoff] Waiting ${backoffMs / 1000}s before retry on ${model}...`);
-            await new Promise((r) => setTimeout(r, backoffMs));
+          if (hasAlternativeModel) {
+            console.log(`[AI Quota] Model ${model} quota exhausted. Switching immediately to alternative model in cascade...`);
+            break;
+          }
+          if (attempt < maxAttemptsForModel) {
+            await new Promise((r) => setTimeout(r, 2000));
             continue;
           }
           break;
         } else if (isUnavailable) {
-          // 503 high demand spikes are temporary (1-2s). Retry the current model before falling back.
+          // 503 High Demand: put model on 60s cooldown.
+          setModelCooldown(model, 60 * 1000);
+          if (hasAlternativeModel) {
+            console.log(`[AI 503 Spike] Model ${model} is experiencing high demand. Switching immediately to alternative model in cascade...`);
+            break;
+          }
           if (attempt < maxAttemptsForModel) {
-            const backoffMs = Math.min(4000, 1500 * attempt);
-            console.log(`[AI 503 Spike] Waiting ${backoffMs / 1000}s before retry ${attempt + 1}/${maxAttemptsForModel} on ${model}...`);
-            await new Promise((r) => setTimeout(r, backoffMs));
+            await new Promise((r) => setTimeout(r, 1500));
             continue;
           }
-          // Only after all retry attempts are exhausted, set a short cooldown
-          setModelCooldown(model, 30 * 1000);
           break;
         } else if (isTimeout) {
-          // On timeout, do not block model long term; retry if attempts permit
-          if (attempt < maxAttemptsForModel) {
-            console.log(`[AI Timeout] Retrying ${model} with fresh timeout window...`);
-            continue;
+          // On timeout, put on 45s cooldown and immediately try the next model
+          setModelCooldown(model, 45 * 1000);
+          if (hasAlternativeModel) {
+            console.log(`[AI Timeout] Model ${model} timed out. Switching immediately to alternative model in cascade...`);
+            break;
           }
           break;
         } else {
+          setModelCooldown(model, 30 * 1000);
           break;
         }
       }
@@ -1785,9 +1791,9 @@ DIRETRIZES FUNDAMENTAIS (RIGOR CONTRA PROLIXIDADE):
           temperature: 0.5,
         },
       },
-      ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'],
-      35000,
-      60000
+      ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-3.1-flash-lite'],
+      18000,
+      35000
     );
 
     const reply = aiResponse.text?.trim() || 'Olá! Como posso te ajudar na sua preparação para o concurso hoje?';
@@ -1949,7 +1955,7 @@ app.post('/api/extract-pdf-text', async (req, res) => {
               },
             ],
           },
-          ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite']
+          ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-3.1-flash-lite']
         );
 
         const geminiText = geminiRes.text?.trim();
@@ -2441,9 +2447,9 @@ Retorne APENAS o código HTML válido e completo (com <!DOCTYPE html>, <html>, <
           thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
         },
       },
-      ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'],
-      38000,
-      52000
+      ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-3.1-flash-lite'],
+      25000,
+      48000
     );
 
     const generatedText = response.text ? response.text.trim() : '';
@@ -2907,9 +2913,9 @@ ${textToProcess}`;
           thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
         },
       },
-      ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'],
-      38000,
-      52000
+      ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-3.1-flash-lite'],
+      25000,
+      48000
     );
 
     let cleanHtml = response.text ? response.text.trim() : '';
@@ -4415,9 +4421,9 @@ Retorne EXCLUSIVAMENTE em formato JSON (bloco json) com a lista de objetos:
           const aiResp = await generateContentWithRetryAndFallback(
             ai,
             { contents: extractionPrompt, config: { temperature: 0.4 } },
-            ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'],
-            40000,
-            75000
+            ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-3.1-flash-lite'],
+            20000,
+            40000
           );
           rawResponse = aiResp.text || '';
         } catch (fbErr) {
@@ -4533,9 +4539,9 @@ Retorne EXCLUSIVAMENTE em formato JSON:
           const suppResp = await generateContentWithRetryAndFallback(
             ai,
             { contents: supplementPrompt, config: { temperature: 0.7 } },
-            ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'],
-            25000,
-            45000
+            ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-3.1-flash-lite'],
+            15000,
+            30000
           );
           let suppJson = (suppResp.text || '').trim();
           if (suppJson.includes('```json')) suppJson = suppJson.split('```json')[1].split('```')[0].trim();
@@ -4983,9 +4989,9 @@ ${chunkFormattedSectionsText}`;
               },
             },
           },
-          ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'],
-          32000,
-          50000
+          ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-3.1-flash-lite'],
+          22000,
+          45000
         );
         rawResponseText = response.text ? response.text.trim() : '[]';
       } catch (schemaErr: any) {
@@ -5011,9 +5017,9 @@ ${chunkFormattedSectionsText}`;
               thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
             },
           },
-          ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'],
-          25000,
-          48000
+          ['gemini-2.5-flash', 'gemini-3.1-flash-lite'],
+          16000,
+          25000
         );
         rawResponseText = relaxed.text ? relaxed.text.trim() : '[]';
       }
